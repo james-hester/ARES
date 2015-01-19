@@ -13,15 +13,17 @@ public class SimpleDriver
 		Scanner readFile;
 		Memory m = new Memory();
 		
+                //System.out.println(System.getProperty("user.dir"));
+                
 		try
 		{
-			readFile = new Scanner(new File("testfile_jumps.txt"));
+			readFile = new Scanner(new File("comprehensive_test.txt"));
 			int i = 0;
 			while (readFile.hasNextLine())
 			{
 				int a = Integer.parseUnsignedInt(readFile.nextLine(), 16);
-				System.out.println(Integer.toHexString(a));
 				m.write(Memory.TEXT_SEGMENT_START_ADDRESS + i, a);
+				System.out.println(a + "\t" + m.read(Memory.TEXT_SEGMENT_START_ADDRESS + i));
 				i += 4;
 			}
 			m.setMaxInstAddr(Memory.TEXT_SEGMENT_START_ADDRESS + i);
@@ -45,6 +47,7 @@ public class SimpleDriver
 		}
 		long end = System.currentTimeMillis();
 		System.out.println("Clock speed: " + ((double)i / (1000.0 * (double)(end - start)) + " MHz") );
+				
 	}
 		
 	/*

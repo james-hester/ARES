@@ -1,7 +1,7 @@
 package ares.core;
 
 import java.util.Arrays;
-//import java.util.BitSet;
+import java.util.BitSet;
 
 public class Simulator
 {
@@ -23,12 +23,10 @@ public class Simulator
 	int[] MEM_WB = new int[4];
 	
 	/*
-	 * Pipeline registers for control bits.
-	 * Currently unimplemented.
+	 * Pipeline registers for control bits..
 	 */
-	//BitSet ID_EX_CTRL = new BitSet(9);
-	//BitSet EX_MEM_CTRL = new BitSet(3);
-	//BitSet MEM_WB_CTRL = new BitSet(2);
+	BitSet EX_MEM_CTRL = new BitSet(5);
+	BitSet MEM_WB_CTRL = new BitSet(3);
 	
 	public Simulator(Memory m)
 	{
@@ -76,6 +74,7 @@ public class Simulator
 		
 		int InstrD = 0, PCPlus4D = 0, OpD = 0, SignImmD = 0, RsD = 0, RtD = 0;
 		int RsNumD = 0, RtNumD = 0;
+		boolean BranchD = false;
 		if ( ! isEmpty(IF_ID))
 		{
 			InstrD = IF_ID[0];
@@ -84,7 +83,9 @@ public class Simulator
 			OpD = (InstrD >>> 26);
 			RsNumD = (InstrD >> 21) & 0b11111;
 			RtNumD = (InstrD >> 16) & 0b11111;
-			SignImmD = ((short)(InstrD & 0x0000FFFF)); //Cast to char used to sign-extend the immediate.
+			SignImmD = ((short)(InstrD & 0x0000FFFF)); //Cast to short used to sign-extend the immediate.
+			
+			BranchD = (OpD == 0x04 || OpD == 0x05);
 		}
 		
 		/*
@@ -96,10 +97,7 @@ public class Simulator
 		int InstrE = 0, RsE = 0, RtE = 0, RdE = 0, SignImmE, OpE = 0, FunctE;
 		int RsNumE = 0, RtNumE = 0, RdNumE = 0, PCPlus4E = 0;
 		int AluOutE = 0, WriteDataE = 0, WriteRegE = 0;
-		//"WriteControlE" contains write control logic.
-		//The low bit is equivalent to RegWrite, the second equivalent to MemWrite,
-		//and the third MemToReg.
-		int WriteControlE = 0;
+		boolean RegWriteE = false, MemWriteE = false, MemToRegE = false, MemByteE = false, MemHalfwordE = false;
 		boolean stallForMultiplierE = false;
 		if ( ! isEmpty(ID_EX))
 		{
@@ -121,7 +119,7 @@ public class Simulator
 				 * In nearly all cases, RegWrite will be asserted and the other two
 				 * bits deasserted, and Rd is being written to.
 				 */
-				WriteControlE = 1;
+				RegWriteE = true;
 				WriteRegE = RdNumE;
 				
 				switch (FunctE)
@@ -130,31 +128,35 @@ public class Simulator
 					AluOutE = RtE << (InstrE >> 6 & 0b11111);
 					break;
 				case 0x08: //jr
-					WriteControlE = 0; //do nothing; jump has already been performed
+					//do nothing; jump has already been performed
+					RegWriteE = false;
 					WriteRegE = 0;
 					break;
 				case 0x10: //mfhi
 					stallForMultiplierE = MultiplyUnit.hasStepsRemaining();
 					AluOutE = MultiplyUnit.moveFromHi();
-					WriteControlE = stallForMultiplierE ? 0 : 1;
+					//WriteControlE = stallForMultiplierE ? 0 : 1;
+					RegWriteE = true;
 					break;
 				case 0x12: //mflo
 					stallForMultiplierE = MultiplyUnit.hasStepsRemaining();
 					AluOutE = MultiplyUnit.moveFromLo();
-					WriteControlE = stallForMultiplierE ? 0 : 1;
+					//WriteControlE = stallForMultiplierE ? 0 : 1;
+					RegWriteE = true;
 					break;					
 				case 0x18: //mult
 					MultiplyUnit.multiply(RsE, RtE);
-					WriteControlE = 0;
+					RegWriteE = false;
 					WriteRegE = 0;
 					break;
 				case 0x1a: //div
 					MultiplyUnit.divide(RsE, RtE);
-					WriteControlE = 0;
+					RegWriteE = false;
 					WriteRegE = 0;
 					break;
 				case 0x20: //add
 					AluOutE = RsE + RtE;
+					//TODO: throw overflow exception
 					break;
 				case 0x25: //or
 					AluOutE = RsE | RtE;
@@ -163,6 +165,13 @@ public class Simulator
 					AluOutE = RsE & RtE;
 					break;
 				case 0x22: //sub
+					AluOutE = RsE - RtE;
+					//TODO: throw overflow exception
+					break;
+				case 0x21: //addu
+					AluOutE = RsE + RtE;
+					break;
+				case 0x23: //subu
 					AluOutE = RsE - RtE;
 					break;
 				}
@@ -174,35 +183,67 @@ public class Simulator
 				case 0x03: //jal
 					AluOutE = PCPlus4E + 4;
 					RtNumE = 31;
-					WriteControlE = 1; //001
+					RegWriteE = true;
 					break;
 				case 0x02: //j
 				case 0x04: //beq
 				case 0x05: //bne
 					//Branches and jumps are processed in the ID stage.
 					//So, don't do anything.
-					WriteControlE = 0;
 					break;
 				case 0x0d: //ori
 					AluOutE = (RsE | (SignImmE & 0x0000FFFF)); //zero-extended immediate used for ori
-					WriteControlE = 1; //001
+					RegWriteE = true;
 					break;
 				case 0x08: //addi
+					AluOutE = (RsE + (SignImmE & 0x0000FFFF)); //zero-extended immediate used for andi
+					RegWriteE = true;
+					break;
+				case 0x0c: //andi
+					AluOutE = (RsE & SignImmE);
+					RegWriteE = true;
+					break;
+				case 0x09: //addiu
 					AluOutE = (RsE + SignImmE);
-					WriteControlE = 1;
+					RegWriteE = true;
 					break;
 				case 0x0f: //lui
 					AluOutE = ((SignImmE & 0x0000FFFF) << 16);
-					WriteControlE = 1; //001
+					RegWriteE = true;
+					break;
+				case 0x24: //lbu
+					AluOutE = (RsE + SignImmE);
+					RegWriteE = MemToRegE = true;
+					MemByteE = true;
+					break;
+				case 0x25: //lhu
+					//Not implemented
+					break;
+				case 0x30: //ll
+					//Not implemented
+					break;
+				case 0x0a: //slti
+					if (RsE < SignImmE)
+						AluOutE = 1;
+					else
+						AluOutE = 0;
+					RegWriteE = true;
+					break;
+				case 0x0b: //sltiu
+					if (Integer.compareUnsigned(RsE, SignImmE) < 0)
+						AluOutE = 1;
+					else
+						AluOutE = 0;
+					RegWriteE = true;
 					break;
 				case 0x23: //lw
 					AluOutE = (RsE + SignImmE);
-					WriteControlE = 5; //101
+					RegWriteE = MemToRegE = true;
 					break;
 				case 0x2b: //sw
 					AluOutE = (RsE + SignImmE);
 					WriteDataE = RtE;
-					WriteControlE = 2; //010
+					MemWriteE = true;
 					break;
 				}
 				WriteRegE = RtNumE;
@@ -214,23 +255,41 @@ public class Simulator
 		/*
 		 * MEM: Memory read/write, phase 1.
 		 */
-		int AluOutM = 0, WriteDataM = 0, WriteRegM = 0, WriteControlM = 0, ReadDataM = 0;
+		int AluOutM = 0, WriteDataM = 0, WriteRegM = 0, ReadDataM = 0;
+		boolean MemToRegM = false, MemWriteM = false, RegWriteM = false, MemByteM = false, MemHalfwordM = false;
 		if ( ! isEmpty(EX_MEM))
 		{
 			AluOutM = EX_MEM[0];
-			WriteControlM = EX_MEM[1];
+			//WriteControlM = EX_MEM[1];
 			WriteRegM = EX_MEM[2];
 			WriteDataM = EX_MEM[3];
 			
+			RegWriteM = EX_MEM_CTRL.get(0);
+			MemWriteM = EX_MEM_CTRL.get(1);
+			MemToRegM = EX_MEM_CTRL.get(2);
+			MemByteM = EX_MEM_CTRL.get(3);
+			MemHalfwordM = EX_MEM_CTRL.get(4);
 			
-			if ((WriteControlM & 2) != 0) //if MemWriteM is set
+			if (MemWriteM) //if MemWriteM is set, write
 			{
-				memory.write(AluOutM, WriteDataM);
+				if (MemByteM)
+					memory.writeByte(AluOutM, WriteDataM);
+				else if (MemHalfwordM)
+					memory.writeHalfword(AluOutM, WriteDataM);
+				else
+					memory.write(AluOutM, WriteDataM);
+				
 				debugPrint("MEM: memory write at address " + AluOutM + " : " + WriteDataM);
 			}
-			else
+			else if (MemToRegM) //if MemToRegM is set, read
 			{
-				ReadDataM = memory.read(AluOutM);
+				if (MemByteM)
+					ReadDataM = memory.read(AluOutM);
+				else if (MemHalfwordM)
+					ReadDataM = memory.read(AluOutM);
+				else
+					ReadDataM = memory.read(AluOutM);
+				
 				debugPrint("MEM: memory read at address " + AluOutM + " : " + ReadDataM);
 			}
 			
@@ -242,15 +301,20 @@ public class Simulator
 		 * Write to register file.
 		 */
 		
-		int WriteRegW = 0, ReadDataW = 0, AluOutW = 0, WriteControlW = 0, ResultW = 0;
+		int WriteRegW = 0, ReadDataW = 0, AluOutW = 0, ResultW = 0;
+		boolean RegWriteW = false, MemWriteW = false, MemToRegW = false;
 		if ( ! isEmpty(MEM_WB))
 		{
 			AluOutW = MEM_WB[0];
-			WriteControlW = MEM_WB[1];
+			//WriteControlW = MEM_WB[1];
 			WriteRegW = MEM_WB[2];
 			ReadDataW = MEM_WB[3];
 			
-			if((WriteControlW & 4) != 0) // if (MemtoReg)
+			RegWriteW = MEM_WB_CTRL.get(0);
+			MemWriteW = MEM_WB_CTRL.get(1);
+			MemToRegW = MEM_WB_CTRL.get(2);
+			
+			if(MemToRegW) // if (MemtoReg)
 			{
 				ResultW = ReadDataW;
 			}
@@ -259,7 +323,7 @@ public class Simulator
 				ResultW = AluOutW;
 			}
 			
-			if ((WriteControlW & 1) != 0) //if (RegWrite)
+			if (RegWriteW) //if (RegWrite)
 			{
 				memory.writeRegister(WriteRegW, ResultW);
 			}
@@ -284,36 +348,33 @@ public class Simulator
 			
 			//Forward to SrcAE
 			
-			if ((RsNumD != 0) && (RsNumD == WriteRegE) && ((WriteControlE & 1) != 0))
+			if ((RsNumD != 0) && (RsNumD == WriteRegE) && RegWriteE)
 				RsD = AluOutE;
 			
-			else if ((RsNumD != 0) && (RsNumD == WriteRegM) && ((WriteControlM & 1) != 0))
-				RsD = ((WriteControlM & 4) != 0) ? ReadDataM : AluOutM;
+			else if ((RsNumD != 0) && (RsNumD == WriteRegM) && RegWriteM)
+				RsD = MemToRegM ? ReadDataM : AluOutM;
 			
 			else
 				RsD = memory.readRegister(RsNumD);
 			
 			//Forward to SrcBE (identical, except Rt is used instead of Rs)
 			
-			if ((RtNumD != 0) && (RtNumD == WriteRegE) && ((WriteControlE & 1) != 0))
+			if ((RtNumD != 0) && (RtNumD == WriteRegE) && RegWriteE)
 				RtD = AluOutE;
 			
-			else if ((RtNumD != 0) && (RtNumD == WriteRegM) && ((WriteControlM & 1) != 0))
-				RtD = ((WriteControlM & 4) != 0) ? ReadDataM : AluOutM;
+			else if ((RtNumD != 0) && (RtNumD == WriteRegM) && RegWriteM)
+				RtD = MemToRegM ? ReadDataM : AluOutM;
 			
 			else
 				RtD = memory.readRegister(RtNumD);
 
-			if (OpD == 0x04 || OpD == 0x05)
+			if (BranchD)
 			{
 				/*
-				 * These two dense lines forward the correct values to the ID comparator. This is
-				 * different from how forwarding to the EX stage is implemented (in its own dedicated
-				 * "phase", using the pipeline registers), because these forwarded values are not used
-				 * by non-branch instructions. TODO: perhaps this could be done more elegantly in the future.
+				 * These two dense lines forward the correct values to the ID comparator. 
 				 */
-				int compRsD = ((RsNumD != 0) && (RsNumD == WriteRegM) && ((WriteControlM & 1) != 0)) ? AluOutM : RsD;
-				int compRtD = ((RtNumD != 0) && (RtNumD == WriteRegM) && ((WriteControlM & 1) != 0)) ? AluOutM : RtD;
+				int compRsD = ( (RsNumD != 0) && (RsNumD == WriteRegM) && RegWriteM) ? AluOutM : RsD;
+				int compRtD = ( (RtNumD != 0) && (RtNumD == WriteRegM) && RegWriteM) ? AluOutM : RtD;
 				
 				boolean EqualD = (compRsD == compRtD);
 				
@@ -329,7 +390,7 @@ public class Simulator
 					break;
 				}
 			}
-			else if (OpD == 0x02 || OpD == 0x03)
+			else if (OpD == 0x02 || OpD == 0x03) //jumps
 			{
 				NewPCF = (PCPlus4D & 0xF0000000) + ((InstrD & 0x07FFFFFF) << 2);
 			}
@@ -352,9 +413,10 @@ public class Simulator
 		/*
 		 * Stall inserter for branch data hazard.
 		 */
-		if ((OpD == 0x04 || OpD == 0x05) && //equivalent to BranchD
-				((((WriteControlE & 1) != 0) && (WriteRegE == RsNumD || WriteRegE == RtNumD)) || 
-				(((WriteControlM & 4) != 0) && (WriteRegM == RsNumD || WriteRegM == RtNumD))))
+		if (BranchD && //equivalent to BranchD
+				((( RegWriteE && (WriteRegE == RsNumD || WriteRegE == RtNumD) ) || 
+				(( (MemToRegM) && (WriteRegM == RsNumD || WriteRegM == RtNumD) )))
+				))
 		{
 			stall = true;
 		}
@@ -394,14 +456,24 @@ public class Simulator
 		}
 		
 		EX_MEM[0] = AluOutE;
-		EX_MEM[1] = WriteControlE;
+		//EX_MEM[1] = WriteControlE;
 		EX_MEM[2] = WriteRegE;
 		EX_MEM[3] = WriteDataE;
 		
+		EX_MEM_CTRL.set(0, RegWriteE);
+		EX_MEM_CTRL.set(1, MemWriteE);
+		EX_MEM_CTRL.set(2, MemToRegE);
+		EX_MEM_CTRL.set(3, MemByteE);
+		EX_MEM_CTRL.set(4, MemHalfwordE);
+		
 		MEM_WB[0] = AluOutM;
-		MEM_WB[1] = WriteControlM;
+		//MEM_WB[1] = WriteControlM;
 		MEM_WB[2] = WriteRegM;
 		MEM_WB[3] = ReadDataM;
+		
+		MEM_WB_CTRL.set(0, RegWriteM);
+		MEM_WB_CTRL.set(1, MemWriteM);
+		MEM_WB_CTRL.set(2, MemToRegM);
 
 
 		StallF = StallD = FlushE = false;
@@ -423,13 +495,18 @@ public class Simulator
 			
 			debugPrint("-------------------------------------------");
 			debugPrint("PC"+"\t\t"+"IF/ID"+"\t\t"+"ID/EX"+"\t\t"+"EX/MEM"+"\t\t"+"MEM/WB");
-			for(int i = 0; i < 4; i++)
+			for(int i = 0; i < 5; i++)
 			{
-				String strA = Integer.toString(IF_ID[i/2]).length() > 7 ? "\t" : "\t\t";
-				String strB = Integer.toString(ID_EX[i]).length() > 7 ? "\t" : "\t\t";
-				String strC = Integer.toString(EX_MEM[i]).length() > 7 ? "\t" : "\t\t";
-				String strD = Integer.toString(PC).length() > 7 ? "\t" : "\t\t";
-				debugPrint(PC+strD+IF_ID[i/2]+strA+ID_EX[i]+strB+EX_MEM[i]+strC+MEM_WB[i]);
+				String[] pipelineVars = new String[5];
+				pipelineVars[0] = (i == 0 ? Integer.toString(PC) : "");
+				pipelineVars[1] = (i < IF_ID.length ? Integer.toString(IF_ID[i]) : "");
+				pipelineVars[2] = (i < ID_EX.length ? Integer.toString(ID_EX[i]) : "");
+				pipelineVars[3] = (i < EX_MEM.length ? Integer.toString(EX_MEM[i]) : ""); 
+				pipelineVars[4] = (i < MEM_WB.length ? Integer.toString(MEM_WB[i]) : "");
+				String output = "";
+				for(int j = 0; j < 5; j++)
+					output += pipelineVars[j] + (pipelineVars[j].length() > 7 ? "\t" : "\t\t");
+				debugPrint(output);
 			}
 		}
 		
