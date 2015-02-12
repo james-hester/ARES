@@ -2,6 +2,7 @@ package ares.core;
 
 import java.util.Arrays;
 import java.util.BitSet;
+import java.util.LinkedList;
 
 public class Simulator
 {
@@ -23,10 +24,12 @@ public class Simulator
 	int[] MEM_WB = new int[4];
 	
 	/*
-	 * Pipeline registers for control bits..
+	 * Pipeline registers for control bits.
 	 */
 	BitSet EX_MEM_CTRL = new BitSet(5);
 	BitSet MEM_WB_CTRL = new BitSet(3);
+	
+	LinkedList<MIPSException> exceptionVector = new LinkedList<>();
 	
 	public Simulator(Memory m)
 	{
@@ -156,7 +159,8 @@ public class Simulator
 					break;
 				case 0x20: //add
 					AluOutE = RsE + RtE;
-					//TODO: throw overflow exception
+					if ( (int)( (long)RsE + (long)RtE ) != AluOutE) //Check for overflow.
+						exceptionVector.addLast(new MIPSException(PC - 8, MIPSException.OVERFLOW));
 					break;
 				case 0x25: //or
 					AluOutE = RsE | RtE;
@@ -166,7 +170,8 @@ public class Simulator
 					break;
 				case 0x22: //sub
 					AluOutE = RsE - RtE;
-					//TODO: throw overflow exception
+					if ( (int)( (long)RsE - (long)RtE ) != AluOutE) //Check for overflow.
+						exceptionVector.addLast(new MIPSException(PC - 8, MIPSException.OVERFLOW));
 					break;
 				case 0x21: //addu
 					AluOutE = RsE + RtE;
@@ -217,7 +222,9 @@ public class Simulator
 					MemByteE = true;
 					break;
 				case 0x25: //lhu
-					//Not implemented
+					AluOutE = (RsE + SignImmE);
+					RegWriteE = MemToRegE = true;
+					MemHalfwordE = true;
 					break;
 				case 0x30: //ll
 					//Not implemented
@@ -260,7 +267,6 @@ public class Simulator
 		if ( ! isEmpty(EX_MEM))
 		{
 			AluOutM = EX_MEM[0];
-			//WriteControlM = EX_MEM[1];
 			WriteRegM = EX_MEM[2];
 			WriteDataM = EX_MEM[3];
 			
@@ -306,7 +312,6 @@ public class Simulator
 		if ( ! isEmpty(MEM_WB))
 		{
 			AluOutW = MEM_WB[0];
-			//WriteControlW = MEM_WB[1];
 			WriteRegW = MEM_WB[2];
 			ReadDataW = MEM_WB[3];
 			
@@ -314,7 +319,7 @@ public class Simulator
 			MemWriteW = MEM_WB_CTRL.get(1);
 			MemToRegW = MEM_WB_CTRL.get(2);
 			
-			if(MemToRegW) // if (MemtoReg)
+			if(MemToRegW)
 			{
 				ResultW = ReadDataW;
 			}
@@ -323,7 +328,7 @@ public class Simulator
 				ResultW = AluOutW;
 			}
 			
-			if (RegWriteW) //if (RegWrite)
+			if (RegWriteW)
 			{
 				memory.writeRegister(WriteRegW, ResultW);
 			}
@@ -427,6 +432,8 @@ public class Simulator
 		}
 		StallF = StallD = FlushE = stall;
 		
+		
+		
 		/*-------------------------------------------------------------------*
 		 * Finally, write the temporary variables to the pipeline registers. *
 		 *-------------------------------------------------------------------*/
@@ -456,7 +463,6 @@ public class Simulator
 		}
 		
 		EX_MEM[0] = AluOutE;
-		//EX_MEM[1] = WriteControlE;
 		EX_MEM[2] = WriteRegE;
 		EX_MEM[3] = WriteDataE;
 		
@@ -467,7 +473,6 @@ public class Simulator
 		EX_MEM_CTRL.set(4, MemHalfwordE);
 		
 		MEM_WB[0] = AluOutM;
-		//MEM_WB[1] = WriteControlM;
 		MEM_WB[2] = WriteRegM;
 		MEM_WB[3] = ReadDataM;
 		
@@ -477,6 +482,10 @@ public class Simulator
 
 
 		StallF = StallD = FlushE = false;
+		
+		/*
+		 * Check to see whether we've dropped off the bottom of the executing program.
+		 */
 		
 		if (PC > (memory.getMaxInstAddr() + (4 * 3)) && 
 		(isEmpty(ID_EX) && isEmpty(EX_MEM) && isEmpty(MEM_WB)))
@@ -572,7 +581,7 @@ public class Simulator
 			return (int)((product & 0x00000000FFFFFFFFL));
 		}
 	}
-	
+		
 	public boolean hasNextInstruction()
 	{
 		return hasNext;
