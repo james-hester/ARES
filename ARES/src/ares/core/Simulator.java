@@ -23,13 +23,25 @@ public class Simulator
 	int[] EX_MEM = new int[4];
 	int[] MEM_WB = new int[4];
 	
-	/*
+	/**
 	 * Pipeline registers for control bits.
 	 */
+	BitSet IF_ID_CTRL =  new BitSet(1);
+	BitSet ID_EX_CTRL =  new BitSet(1);
 	BitSet EX_MEM_CTRL = new BitSet(5);
 	BitSet MEM_WB_CTRL = new BitSet(3);
 	
-	LinkedList<MIPSException> exceptionVector = new LinkedList<>();
+	/**
+	 * Holds the exception that will be handled on the next clock cycle.
+	 * A real R-series MIPS uses an exception vector to ensure that, if two
+	 * exceptions occur in the same clock cycle, the one handled is the
+	 * one which occurs in an earlier pipeline stage.
+	 * The fact that ARES simulates each stage sequentially can be used to
+	 * substantially simplify this model: if an exception is "thrown,"
+	 * and there is already an exception stored in this variable,
+	 * it is ignored.
+	 */
+	MIPSException currentException = null;
 	
 	public Simulator(Memory m)
 	{
@@ -69,6 +81,7 @@ public class Simulator
 		int InstrF = memory.read(PC);
 		int PCPlus4F = PC + 4;
 		int NewPCF = PCPlus4F;
+		boolean InBranchDelayF = false;
 		
 		/*
 		 * ID: Instruction decode, phase 1.
@@ -77,11 +90,13 @@ public class Simulator
 		
 		int InstrD = 0, PCPlus4D = 0, OpD = 0, SignImmD = 0, RsD = 0, RtD = 0;
 		int RsNumD = 0, RtNumD = 0;
-		boolean BranchD = false;
+		boolean BranchD = false, InBranchDelayD;
 		if ( ! isEmpty(IF_ID))
 		{
 			InstrD = IF_ID[0];
 			PCPlus4D = IF_ID[1];
+			
+			InBranchDelayD = IF_ID_CTRL.get(0);
 			
 			OpD = (InstrD >>> 26);
 			RsNumD = (InstrD >> 21) & 0b11111;
@@ -102,6 +117,7 @@ public class Simulator
 		int AluOutE = 0, WriteDataE = 0, WriteRegE = 0;
 		boolean RegWriteE = false, MemWriteE = false, MemToRegE = false, MemByteE = false, MemHalfwordE = false;
 		boolean stallForMultiplierE = false;
+		boolean InBranchDelayE = false;
 		if ( ! isEmpty(ID_EX))
 		{
 			InstrE = ID_EX[0];
@@ -109,6 +125,8 @@ public class Simulator
 			RtE = ID_EX[2];
 			SignImmE = ID_EX[3];
 			PCPlus4E = ID_EX[4];
+			
+			InBranchDelayE = ID_EX_CTRL.get(0);
 
 			OpE = (InstrE >>> 26);
 			RsNumE = (InstrE >> 21 & 0b11111);
@@ -258,7 +276,6 @@ public class Simulator
 			
 		}
 		
-		
 		/*
 		 * MEM: Memory read/write, phase 1.
 		 */
@@ -289,6 +306,7 @@ public class Simulator
 			}
 			else if (MemToRegM) //if MemToRegM is set, read
 			{
+				//TODO: implement these for real
 				if (MemByteM)
 					ReadDataM = memory.read(AluOutM);
 				else if (MemHalfwordM)
@@ -311,7 +329,7 @@ public class Simulator
 		boolean RegWriteW = false, MemWriteW = false, MemToRegW = false;
 		if ( ! isEmpty(MEM_WB))
 		{
-			AluOutW = MEM_WB[0];
+			AluOutW =   MEM_WB[0];
 			WriteRegW = MEM_WB[2];
 			ReadDataW = MEM_WB[3];
 			
@@ -332,8 +350,6 @@ public class Simulator
 			{
 				memory.writeRegister(WriteRegW, ResultW);
 			}
-
-		
 		}		
 		
 		/*
@@ -447,6 +463,8 @@ public class Simulator
 		{
 		IF_ID[0] = InstrF;
 		IF_ID[1] = (InstrF > 0) ? PCPlus4F : 0;
+		
+		IF_ID_CTRL.set(0, InBranchDelayF);
 		}
 
 		if ( ! FlushE)
@@ -456,10 +474,13 @@ public class Simulator
 		ID_EX[2] = RtD;
 		ID_EX[3] = SignImmD;
 		ID_EX[4] = PCPlus4D;
+		
+		ID_EX_CTRL.set(0, InBranchDelayD);
 		}
 		else if ( ! stallForMultiplierE)
 		{
 		Arrays.fill(ID_EX, 0);
+		ID_EX_CTRL.clear();
 		}
 		
 		EX_MEM[0] = AluOutE;
@@ -471,6 +492,7 @@ public class Simulator
 		EX_MEM_CTRL.set(2, MemToRegE);
 		EX_MEM_CTRL.set(3, MemByteE);
 		EX_MEM_CTRL.set(4, MemHalfwordE);
+		EX_MEM_CTRL.set(5, InBranchDelayE);
 		
 		MEM_WB[0] = AluOutM;
 		MEM_WB[2] = WriteRegM;

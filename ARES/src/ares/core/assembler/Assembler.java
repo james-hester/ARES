@@ -5,6 +5,8 @@ import java.util.HashMap;
 import java.util.LinkedList;
 
 import ares.core.InstructionSet;
+import ares.core.Memory;
+import static ares.core.assembler.AssemblerError.ErrorID;
 
 
 public class Assembler {
@@ -13,15 +15,15 @@ public class Assembler {
 	private static boolean[] segComplete = new boolean[5];
 	
 	/**
-	 * The symbol table.
+	 * The symbol/constant table.
 	 * Associates a label (the String key) with the value of the appropriate location counter.
 	 * Because the different location counters are interpreted differently (see below),
 	 * it is necessary to identify which LC is being stored; hence the int[]. 
 	 * All values have dimension 2:
-	 * 		value[0] = the value of the LC.
-	 * 		value[1] = the LC's segment ID (0-3).
+	 * 		value[0] = the value of the LC or the constant.
+	 * 		value[1] = the LC's segment ID (0-3) or 4 (value[0] is a constant).
 	 */
-	private HashMap<String, int[]> symTbl = new HashMap<>();
+	private HashMap<String, Integer> symTbl = new HashMap<>();
 	
 	/**
 	 * The set of location counters: one for each segment.
@@ -111,6 +113,25 @@ public class Assembler {
 			case ".kdata":
 				switchSeg(3);
 				continue;
+			case ".const":
+				String name = tokenizedSource.get(0);
+				String strVal = tokenizedSource.get(1);
+				if (name != null && strVal != null)
+				{
+					try
+					{
+						symTbl.put(name, Integer.parseInt(strVal));
+					}
+					catch (Exception e)
+					{
+					throw new AssemblerError(ErrorID.CONST_NOT_INTEGER);
+					}
+				}
+				replaceToken = false;
+				tokenizedSource.pop(); //Remove the name and value
+				tokenizedSource.pop(); //from the token stream, too.
+				break;
+				
 			}
 			
 			if (token.lastIndexOf(':') == token.length() - 1)
@@ -118,8 +139,21 @@ public class Assembler {
 				//Looks like we've found a label
 				//Add it to the symbol table
 				token = token.substring(0, token.length() - 1);
-				symTbl.put(token, new int[]{LC[currentSeg], currentSeg});
-				//System.err.println(token + "\t" + token.lastIndexOf(':'));
+				switch (currentSeg)
+				{
+				case 0: 
+					symTbl.put(token, Memory.TEXT_SEGMENT_START_ADDRESS + (LC[currentSeg] << 2));
+					break;
+				case 1:
+					symTbl.put(token, Memory.DATA_SEGMENT_START_ADDRESS + LC[currentSeg]);
+					break;
+				case 2:
+					symTbl.put(token, Memory.KTEXT_SEGMENT_START_ADDRESS + (LC[currentSeg] << 2));
+					break;
+				case 3:
+					symTbl.put(token, Memory.KDATA_SEGMENT_START_ADDRESS + LC[currentSeg]);
+					break;
+				}
 				continue;
 			}
 			
@@ -143,13 +177,7 @@ public class Assembler {
 							methodSig.add("reg");
 						else 
 						{
-
-							
-							if ( ! postfix.equals("") ||				//if there is any postfix at all
-								argImmVal < 65536 && argImmVal > -32769) //if the immediate will fit in 16 bits--could be signed or unsigned
-								methodSig.add("imm16");
-							else
-								methodSig.add("imm32");
+							methodSig.add(isInt32(arg) ? "int32" : "int16");
 						}
 
 					}
@@ -176,10 +204,10 @@ public class Assembler {
 					try
 					{	amount = Integer.parseInt(tokenizedSource.pop()); }
 					catch (Exception e)
-					{	throw new AssemblerError(1); }
+					{	throw new AssemblerError(ErrorID.ALIGN_ARG_NOT_INTEGER); }
 					
 					if (amount < 0 || amount > 3)
-						throw new AssemblerError(2);
+						throw new AssemblerError(ErrorID.ALIGN_ARG_INVALID);
 					
 					if (amount == 0)
 						break;
@@ -193,15 +221,15 @@ public class Assembler {
 					try
 					{	space = Integer.parseInt(tokenizedSource.pop()); }
 					catch (Exception e)
-					{	throw new AssemblerError(1); }
+					{	throw new AssemblerError(ErrorID.SPACE_ARG_INVALID); }
 					
 					if (space < 0)
-						throw new AssemblerError(2);
+						throw new AssemblerError(ErrorID.SPACE_NEGATIVE);
 					
 					result = new byte[space];
 					break;
 				default:
-					throw new AssemblerError(3);
+					throw new AssemblerError(ErrorID.DATA_SEG_DIRECTIVE_INVALID);
 				}
 				for(int i = 0; i < result.length; i++)
 				{
@@ -224,7 +252,7 @@ public class Assembler {
 		System.out.println("SYMBOL TABLE:");
 		for(String s : symTbl.keySet())
 		{
-			System.out.println("\t" + s + "\t\t\t" + Arrays.toString(symTbl.get(s)));
+			System.out.println("\t" + s + "\t\t\t" + (symTbl.get(s)));
 		}
 		System.out.println("COMPILED DATA SEGMENT:");
 		System.out.println(Arrays.toString(dataSegs.get(0).toArray(new Byte[1])));
@@ -327,6 +355,50 @@ public class Assembler {
 		int immVal;
 		char[] operators = {'+', '-', '/', '*', '[', ']'};
 		int[] opPositions = new int[operators.length];
+		
+		/*
+		 * First, parse postfixes.
+		 * Resolve labels if necessary.
+		 * Goal:
+		 * 		label[LO]+65536[HI]+2*3/label2 ->
+		 * 		44+1+2*3/label2
+		 */
+		int last = 0;
+		while(arg.indexOf('[') != -1)
+		{
+			int val = 0;
+			
+			String postfix = arg.substring(arg.indexOf('['), arg.indexOf(']'));
+			if ( ! (postfix.equals("[HI]") || postfix.equals("[LO]")))
+				throw new AssemblerError(ErrorID.LITERAL_POSTFIX_INVALID, postfix);
+			
+			String literal = arg.substring(last, arg.indexOf('['));
+			for(int i = 0; i < opPositions.length; i++)
+				opPositions[i] = literal.indexOf(operators[i]);
+			int a = findMin(opPositions);
+			while(a != -1)
+			{
+				literal = literal.substring(opPositions[a]);
+				opPositions[a] = literal.indexOf(operators[a]);
+				a = findMin(opPositions);
+			}
+			
+			try
+			{
+				val = Integer.parseInt(literal);
+			}
+			catch (NumberFormatException e)
+			{
+				Integer symbol = symTbl.get(val);
+				if (symbol == null) 
+					symbol = Memory.TEXT_SEGMENT_START_ADDRESS;
+			}
+		}
+		
+		return false;
+		/*
+		char[] operators = {'+', '-', '/', '*', '[', ']'};
+		int[] opPositions = new int[operators.length];
 		for(int i = 0; i < opPositions.length; i++)
 			opPositions[i] = arg.indexOf(operators[i]);
 		while(findMin(opPositions) != -1)
@@ -335,6 +407,7 @@ public class Assembler {
 		}
 		
 		return false;
+		*/
 		
 		/*
 		if (opPositions[4] != -1)
@@ -403,7 +476,7 @@ public class Assembler {
 	private static void switchSeg(int toWhich) throws AssemblerError
 	{
 		if (segComplete[toWhich])
-			throw new AssemblerError(0);
+			throw new AssemblerError(ErrorID.SEG_DECLARED_TWICE);
 		segComplete[currentSeg] = true;
 		currentSeg = toWhich;
 	}

@@ -6,7 +6,21 @@ public class AssemblerError extends Exception {
 	private static final long serialVersionUID = 6519463169427192923L;
 
 	private String filename, errDetail = "";
-	private int line, errID;
+	private int line;
+	private ErrorID errID;
+	
+	public enum ErrorID
+	{
+		SEG_DECLARED_TWICE,
+		ALIGN_ARG_NOT_INTEGER,
+		ALIGN_ARG_INVALID,
+		DATA_SEG_DIRECTIVE_INVALID,
+		PSI_ARGUMENT_TYPE_INVALID,
+		LITERAL_POSTFIX_INVALID,
+		CONST_NOT_INTEGER,
+		SPACE_NEGATIVE,
+		SPACE_ARG_INVALID,
+	}
 	
 	
 	/**
@@ -19,7 +33,7 @@ public class AssemblerError extends Exception {
 	 * listed below.
 	 * @param errID the error ID.
 	 */
-	public AssemblerError(int errID)
+	public AssemblerError(ErrorID errID)
 	{
 		super();
 		this.errID = errID;
@@ -33,7 +47,7 @@ public class AssemblerError extends Exception {
 	 * @param errID
 	 * @param errDetail
 	 */
-	public AssemblerError(int errID, String errDetail)
+	public AssemblerError(ErrorID errID, String errDetail)
 	{
 		this(errID);
 		this.errDetail = errDetail;
@@ -67,20 +81,24 @@ public class AssemblerError extends Exception {
 		String result = "";
 		switch(errID)
 		{
-		case 0:
+		case SEG_DECLARED_TWICE:
 			return result + "Segment declared twice. .data, .text, etc. can appear only once.";
-		case 1:
+		case ALIGN_ARG_NOT_INTEGER:
 			return result + "Argument for .align invalid (must be an integer between 0 and 3.)";
-		case 2:
+		case ALIGN_ARG_INVALID:
 			return result + "Argument for .align out of bounds (must be between 0 and 3.)";
-		case 3:
+		case DATA_SEG_DIRECTIVE_INVALID:
 			return result + "Invalid/unsupported directive in data segment.";
-		case 4:
+		case SPACE_NEGATIVE:
+			return result + "Argument for .space cannot be a negative number.";
+		case SPACE_ARG_INVALID:
+			return result + "Argument for .space must be a non-negative integer.";
+		case PSI_ARGUMENT_TYPE_INVALID:
 			return result + "Arguments for pseudoinstructions may only be integers or registers.";
-		case 5:
+		case LITERAL_POSTFIX_INVALID:
 			return result + "Unrecognized postfix in integer literal: " + errDetail;
 		default:
-			return result + "<unknown error: " + Integer.toString(errID) + ">";	
+			return result + "<unknown error: " + errID.name() + ">";	
 		}
 	}
 	
