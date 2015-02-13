@@ -6,9 +6,12 @@ import java.util.HashMap;
 public class Memory
 {
 	public static final int TEXT_SEGMENT_START_ADDRESS = 0x00400000;
+	public static final int DATA_SEGMENT_START_ADDRESS = 0x10010000;
+	public static final int KTEXT_SEGMENT_START_ADDRESS = 0x80000000;
+	public static final int KDATA_SEGMENT_START_ADDRESS = 0x90000000;
 	
 	private static final int BLOCK_SIZE = 0xFFF;
-	
+
 	private HashMap<Integer, byte[]> mainMemory = new HashMap<>();
 	private int[] registers = new int[32];
 	private int maxInstructionAddress = 0;
@@ -29,7 +32,7 @@ public class Memory
 		return maxInstructionAddress;
 	}
 	
-	public int read(int address)
+	private int load(int address, int numBytes)
 	{
 		int hiAddress = address & (0xFFFFFFFF - BLOCK_SIZE);
 		int loAddress = address & BLOCK_SIZE;
@@ -37,15 +40,14 @@ public class Memory
 		byte[] block = mainMemory.get(hiAddress);
 		if (block == null)
 		{
-			block = new byte[BLOCK_SIZE];
+			block = new byte[BLOCK_SIZE + 1];
 			wasEmpty = true;
 		}
 		
 		int result = 0;
-		result |= (block[loAddress]) & 0xFF;
-		result |= (block[loAddress + 1] << 8) & 0xFF00;
-		result |= (block[loAddress + 2] << 16) & 0xFF0000;
-		result |= (block[loAddress + 3] << 24) & 0xFF000000;
+		
+		for(int i = 0; i < numBytes; i++)
+			result |= (block[loAddress + i] << (8 * i)) & (0xFF << (8 * i));
 		
 		if (wasEmpty)
 			mainMemory.put(hiAddress, block);
@@ -53,29 +55,48 @@ public class Memory
 		return result;
 	}
 	
-	public void write(int address, int data)
+	private void store(int address, int data, int numBytes)
 	{
 		int hiAddress = address & (0xFFFFFFFF - BLOCK_SIZE);
 		int loAddress = address & BLOCK_SIZE;
 		
 		byte[] block = mainMemory.get(hiAddress);
 		if (block == null)
-			block = new byte[BLOCK_SIZE];
-		block[loAddress] = (byte) (data & 0xFF);
-		block[loAddress + 1] = (byte) ((data >>> 8) & 0xFF);
-		block[loAddress + 2] = (byte) ((data >>> 16) & 0xFF);
-		block[loAddress + 3] = (byte) ((data >>> 24) & 0xFF);
+			block = new byte[BLOCK_SIZE + 1];
+		for(int i = 0; i < numBytes; i++)
+			block[loAddress + i] = (byte) ((data >>> (8 * i)) & 0xFF);
+
 		mainMemory.put(hiAddress, block);
 	}
 	
-	public void writeByte(int address, int data)
+	public int loadWord(int address)
 	{
-		//mainMemory.put(address, data);
+		return load(address, 4);
 	}
 	
-	public void writeHalfword(int address, int data)
+	public int loadHalfword(int address)
 	{
-		//mainMemory.put(address, data);
+		return load(address, 2);
+	}
+	
+	public int loadByte(int address)
+	{
+		return load(address, 1);
+	}
+	
+	public void storeWord(int address, int data)
+	{
+		store(address, data, 4);
+	}
+	
+	public void storeHalfword(int address, int data)
+	{
+		store(address, data, 2);
+	}
+	
+	public void storeByte(int address, int data)
+	{
+		store(address, data, 1);
 	}
 	
 	public int readRegister(int which)

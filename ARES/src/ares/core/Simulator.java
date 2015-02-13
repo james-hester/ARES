@@ -14,7 +14,7 @@ public class Simulator
 	int branchAmtD;
 	boolean hasNext = true;
 	
-	/*
+	/**
 	 * The pipeline registers and program counter.
 	 */
 	int PC;
@@ -33,7 +33,7 @@ public class Simulator
 	
 	/**
 	 * Holds the exception that will be handled on the next clock cycle.
-	 * A real R-series MIPS uses an exception vector to ensure that, if two
+	 * A real R-series uses an exception vector to ensure that, if two
 	 * exceptions occur in the same clock cycle, the one handled is the
 	 * one which occurs in an earlier pipeline stage.
 	 * The fact that ARES simulates each stage sequentially can be used to
@@ -42,6 +42,8 @@ public class Simulator
 	 * it is ignored.
 	 */
 	MIPSException currentException = null;
+	
+	Coprocessor0 cp0 = new Coprocessor0();
 	
 	public Simulator(Memory m)
 	{
@@ -90,7 +92,7 @@ public class Simulator
 		
 		int InstrD = 0, PCPlus4D = 0, OpD = 0, SignImmD = 0, RsD = 0, RtD = 0;
 		int RsNumD = 0, RtNumD = 0;
-		boolean BranchD = false, InBranchDelayD;
+		boolean BranchD = false, InBranchDelayD = false;
 		if ( ! isEmpty(IF_ID))
 		{
 			InstrD = IF_ID[0];
@@ -103,7 +105,7 @@ public class Simulator
 			RtNumD = (InstrD >> 16) & 0b11111;
 			SignImmD = ((short)(InstrD & 0x0000FFFF)); //Cast to short used to sign-extend the immediate.
 			
-			BranchD = (OpD == 0x04 || OpD == 0x05);
+			BranchD = (! InBranchDelayD) && (OpD == 0x04 || OpD == 0x05);
 		}
 		
 		/*
@@ -137,6 +139,7 @@ public class Simulator
 			if (OpE == 0)
 			{
 				/*
+				 * Handle an R-type instruction.
 				 * In nearly all cases, RegWrite will be asserted and the other two
 				 * bits deasserted, and Rd is being written to.
 				 */
@@ -148,21 +151,31 @@ public class Simulator
 				case 0x00: //sll
 					AluOutE = RtE << (InstrE >> 6 & 0b11111);
 					break;
+				case 0x02: //srl
+					AluOutE = RtE >>> (InstrE >> 6 & 0b11111);
+					break;
+				case 0x03: //sra
+					AluOutE = RtE >> (InstrE >> 6 & 0b11111);
+					break;
 				case 0x08: //jr
 					//do nothing; jump has already been performed
 					RegWriteE = false;
 					WriteRegE = 0;
 					break;
+				case 0x0c: //syscall
+					setException(new MIPSException(MIPSException.SYSCALL, PC - 8, InBranchDelayE));
+					break;
+				case 0x0d: //break
+					setException(new MIPSException(MIPSException.BREAK, PC - 8, InBranchDelayE));
+					break;
 				case 0x10: //mfhi
 					stallForMultiplierE = MultiplyUnit.hasStepsRemaining();
 					AluOutE = MultiplyUnit.moveFromHi();
-					//WriteControlE = stallForMultiplierE ? 0 : 1;
 					RegWriteE = true;
 					break;
 				case 0x12: //mflo
 					stallForMultiplierE = MultiplyUnit.hasStepsRemaining();
 					AluOutE = MultiplyUnit.moveFromLo();
-					//WriteControlE = stallForMultiplierE ? 0 : 1;
 					RegWriteE = true;
 					break;					
 				case 0x18: //mult
@@ -176,9 +189,14 @@ public class Simulator
 					WriteRegE = 0;
 					break;
 				case 0x20: //add
-					AluOutE = RsE + RtE;
-					if ( (int)( (long)RsE + (long)RtE ) != AluOutE) //Check for overflow.
-						exceptionVector.addLast(new MIPSException(PC - 8, MIPSException.OVERFLOW));
+					try 
+					{
+						AluOutE = Math.addExact(RsE, RtE);
+					}
+					catch (ArithmeticException e)
+					{
+						setException(new MIPSException(MIPSException.OVERFLOW, PC - 8, InBranchDelayE));
+					}
 					break;
 				case 0x25: //or
 					AluOutE = RsE | RtE;
@@ -187,9 +205,14 @@ public class Simulator
 					AluOutE = RsE & RtE;
 					break;
 				case 0x22: //sub
-					AluOutE = RsE - RtE;
-					if ( (int)( (long)RsE - (long)RtE ) != AluOutE) //Check for overflow.
-						exceptionVector.addLast(new MIPSException(PC - 8, MIPSException.OVERFLOW));
+					try
+					{
+						AluOutE = Math.subtractExact(RsE, RtE);
+					}
+					catch (ArithmeticException e)
+					{
+						setException(new MIPSException(MIPSException.OVERFLOW, PC - 8, InBranchDelayE));
+					}
 					break;
 				case 0x21: //addu
 					AluOutE = RsE + RtE;
@@ -197,6 +220,24 @@ public class Simulator
 				case 0x23: //subu
 					AluOutE = RsE - RtE;
 					break;
+				}
+			}
+			else if ((OpE & 0b111100) == 16)
+			{
+				/*
+				 * Handle coprocessor instructions.
+				 */
+				int whichCoprocessor = (OpE & 0b11);
+				
+				if (whichCoprocessor != 0)
+					setException(new MIPSException(MIPSException.COPROCESSOR_UNUSABLE, PC - 8, InBranchDelayE));
+				
+				int copFunct = RsNumE;
+				switch(copFunct)
+				{
+				case 0x10: //rfe
+					int oldStatus = cp0.readRegister(Coprocessor0.STATUS);
+					cp0.writeRegister(Coprocessor0.STATUS, (oldStatus & 0xFFFFFFF0) | ((oldStatus >> 2) & 0x0000003F));
 				}
 			}
 			else
@@ -280,7 +321,7 @@ public class Simulator
 		 * MEM: Memory read/write, phase 1.
 		 */
 		int AluOutM = 0, WriteDataM = 0, WriteRegM = 0, ReadDataM = 0;
-		boolean MemToRegM = false, MemWriteM = false, RegWriteM = false, MemByteM = false, MemHalfwordM = false;
+		boolean MemToRegM = false, MemWriteM = false, RegWriteM = false, MemByteM = false, MemHalfwordM = false, InBranchDelayM = false;
 		if ( ! isEmpty(EX_MEM))
 		{
 			AluOutM = EX_MEM[0];
@@ -292,27 +333,52 @@ public class Simulator
 			MemToRegM = EX_MEM_CTRL.get(2);
 			MemByteM = EX_MEM_CTRL.get(3);
 			MemHalfwordM = EX_MEM_CTRL.get(4);
+			InBranchDelayM = EX_MEM_CTRL.get(5);
 			
 			if (MemWriteM) //if MemWriteM is set, write
 			{
 				if (MemByteM)
-					memory.writeByte(AluOutM, WriteDataM);
+						memory.storeByte(AluOutM, WriteDataM);
 				else if (MemHalfwordM)
-					memory.writeHalfword(AluOutM, WriteDataM);
+				{
+					if (AluOutM % 2 == 0)
+						memory.storeHalfword(AluOutM, WriteDataM);
+					else
+						setException(new MIPSException(MIPSException.ADDRESS_ERROR_ON_STORE, PC - 12, InBranchDelayM)
+									 .setBadVAddr(AluOutM));
+				}
 				else
-					memory.write(AluOutM, WriteDataM);
+				{
+					if (AluOutM % 4 == 0)
+						memory.storeWord(AluOutM, WriteDataM);
+					else
+						setException(new MIPSException(MIPSException.ADDRESS_ERROR_ON_STORE, PC - 12, InBranchDelayM)
+									 .setBadVAddr(AluOutM));
+				}
 				
 				debugPrint("MEM: memory write at address " + AluOutM + " : " + WriteDataM);
 			}
 			else if (MemToRegM) //if MemToRegM is set, read
 			{
-				//TODO: implement these for real
+				//TODO: check privileges here
 				if (MemByteM)
-					ReadDataM = memory.read(AluOutM);
+						ReadDataM = memory.loadByte(AluOutM);
 				else if (MemHalfwordM)
-					ReadDataM = memory.read(AluOutM);
+				{
+					if (AluOutM % 2 == 0)
+						ReadDataM = memory.loadHalfword(AluOutM);
+					else
+						setException(new MIPSException(MIPSException.ADDRESS_ERROR_ON_STORE, PC - 12, InBranchDelayM)
+									 .setBadVAddr(AluOutM));
+				}
 				else
-					ReadDataM = memory.read(AluOutM);
+				{
+					if (AluOutM % 4 == 0)
+						ReadDataM = memory.loadWord(AluOutM);
+					else
+						setException(new MIPSException(MIPSException.ADDRESS_ERROR_ON_STORE, PC - 12, InBranchDelayM)
+									 .setBadVAddr(AluOutM));
+				}
 				
 				debugPrint("MEM: memory read at address " + AluOutM + " : " + ReadDataM);
 			}
@@ -410,14 +476,17 @@ public class Simulator
 						NewPCF = PCPlus4D + (SignImmD * 4);
 					break;
 				}
+				InBranchDelayF = true;
 			}
-			else if (OpD == 0x02 || OpD == 0x03) //jumps
+			else if ( ! InBranchDelayD && (OpD == 0x02 || OpD == 0x03)) //jumps
 			{
 				NewPCF = (PCPlus4D & 0xF0000000) + ((InstrD & 0x07FFFFFF) << 2);
+				InBranchDelayF = true;
 			}
-			else if (OpD == 0x00 && (InstrD & 0b111111) == 0x08) //jr
+			else if ( ! InBranchDelayD && (OpD == 0x00 && (InstrD & 0b111111) == 0x08)) //jr
 			{
 				NewPCF = RsD;
+				InBranchDelayF = true;
 			}
 		}
 		
@@ -515,6 +584,48 @@ public class Simulator
 			hasNext = false;
 		}
 		
+		if (currentException != null)
+		{
+			cp0.writeRegister(Coprocessor0.BADVADDR, currentException.getBadVAddr());
+			cp0.writeRegister(Coprocessor0.CAUSE, currentException.getCause());
+			cp0.writeRegister(Coprocessor0.EPC, currentException.getPC());
+			
+			/*
+			 * The Status register contains a three-level "stack" of old values of the Kernel/User mode bit
+			 * and the Interrupt Enable bit:
+			 * [KU prev.][IE prev.][KU old][IE old][KU][IE]
+			 *      5         4        3       2    1   0 
+			 * The code below pushes two zeroes onto this stack.
+			 */
+			int oldStatus = cp0.readRegister(Coprocessor0.STATUS);
+			cp0.writeRegister(Coprocessor0.STATUS, (oldStatus & 0xFFFFFFC0) | ((oldStatus << 2) & 0x0000003F));
+			
+			if (currentException.getPC() <= PC - 16)
+			{
+				Arrays.fill(MEM_WB, 0);
+				MEM_WB_CTRL.clear();
+			}
+			if (currentException.getPC() <= PC - 12)
+			{
+				Arrays.fill(EX_MEM, 0);
+				EX_MEM_CTRL.clear();
+			}
+			if (currentException.getPC() <= PC - 8)
+			{
+				Arrays.fill(ID_EX, 0);
+				ID_EX_CTRL.clear();
+			}
+			if (currentException.getPC() <= PC - 4)
+			{
+				Arrays.fill(IF_ID, 0);
+				IF_ID_CTRL.clear();
+			}
+			
+			PC = cp0.exceptionAddress(currentException);
+			
+		}
+		currentException = null;
+		
 		if (DEBUG)
 		{
 			debugPrint("---------------------------");
@@ -522,6 +633,13 @@ public class Simulator
 			{
 				debugPrint(i + "\t" + memory.readRegister(i));
 			}
+			debugPrint("---------------------------");
+			
+			debugPrint("VAddr\t($8)\t" + cp0.readRegister(8));
+			debugPrint("Status\t($12)\t" + cp0.readRegister(12));
+			debugPrint("Cause\t($13)\t" + cp0.readRegister(13));
+			debugPrint("EPC\t($14)\t" + cp0.readRegister(14));
+			
 			debugPrint("---------------------------");
 			
 			debugPrint("-------------------------------------------");
@@ -541,6 +659,12 @@ public class Simulator
 			}
 		}
 		
+	}
+	
+	private void setException(MIPSException e)
+	{
+		if (currentException == null)
+			currentException = e;
 	}
 	
 	private static class MultiplyUnit
