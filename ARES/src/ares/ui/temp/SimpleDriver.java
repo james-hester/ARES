@@ -20,10 +20,11 @@ public class SimpleDriver
 			while (readFile.hasNextLine())
 			{
 				int a = Integer.parseUnsignedInt(readFile.nextLine(), 16);
-				m.write(Memory.TEXT_SEGMENT_START_ADDRESS + i, a);
+				m.storeWord(Memory.TEXT_SEGMENT_START_ADDRESS + i, a);
 				i += 4;
 			}
 			m.setMaxInstAddr(Memory.TEXT_SEGMENT_START_ADDRESS + i);
+			
 			readFile.close();
 		} 
 		catch (Exception e) 

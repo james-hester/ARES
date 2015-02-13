@@ -1,10 +1,7 @@
 package ares.core;
 
-public class Coprocessor0 
+public class Coprocessor0 extends AbstractCoprocessor
 {
-	private int[] registers = new int[32];
-	
-
 	public static final int INDEX = 0;
 	public static final int	RANDOM = 1;
 	public static final int	ENTRYLO = 2;
@@ -18,21 +15,28 @@ public class Coprocessor0
 	
 	public Coprocessor0()
 	{
-		registers[STATUS] = 0x0000FF11;
-	}
-	
-	public void writeRegister(int which, int data)
-	{
-		registers[which] = data;
-	}
-	
-	public int readRegister(int which)
-	{
-		return registers[which];
+		super(15);
+		writeRegister(STATUS, 0x0000FF03);
 	}
 
+	public boolean interruptsEnabled()
+	{
+		return (readRegister(STATUS) % 2 == 1);
+	}
+		
+	public boolean inUserMode()
+	{
+		return ((readRegister(STATUS) >> 1) % 2 == 1);
+	}
+	
 	public int exceptionAddress(MIPSException currentException)
 	{
 		return 0x80000080;
+	}
+
+	@Override
+	public void doOperation(int which)
+	{
+		return;	
 	}
 }

@@ -1,19 +1,22 @@
 # "Comprehensive" test program for ARES simulator.
-# Note: even with delayed branching turned on, I don't think this runs correctly on MARS.
-# The addi after j address2 is executed, as is the ori to $a1.
+.ktext 
+
+eret
 
 
 .data
 store1: .space 4
 .text
+
 la $t1, address1
 sw $t1, store1
 jr $t1 #first this jump will occur,
-j address2 #then, immediately afterwards, this one will too
+j address2 #but not this one--it turns into a nop!
 addi $t1, $t1, 1 #this instruction will not be executed
+#^^^^^^^^^^^^^^^^ MARS will execute this instruction...why?
 address1:
-ori $v0, 10 #this instruction will be executed
-ori $a1, 20 #this instruction will not be executed, because of jump #2
+ori $v0, 10
+ori $a1, 20 
 address2:
 ori $a2, 30
 lw $a3, store1 #stall should occur here (lwstall)
