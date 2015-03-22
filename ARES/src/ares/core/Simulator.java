@@ -8,7 +8,7 @@ public class Simulator
 {
 	private Memory memory; //The simulator's memory.
 	
-	boolean DEBUG = true; //When false, debugPrint() does nothing.
+	private static final boolean DEBUG = true; //When false, debugPrint() does nothing.
 	
 	boolean branchD = false;
 	int branchAmtD;
@@ -17,19 +17,26 @@ public class Simulator
 	/**
 	 * The pipeline registers and program counter.
 	 */
-	int PC;
-	int[] IF_ID = new int[2];
-	int[] ID_EX = new int[5];
-	int[] EX_MEM = new int[4];
-	int[] MEM_WB = new int[4];
+	private int PC;
+	private int[] IF_ID = new int[2];
+	private int[] ID_EX = new int[5];
+	private int[] EX_MEM = new int[4];
+	private int[] MEM_WB = new int[4];
 	
 	/**
 	 * Pipeline registers for control bits.
 	 */
-	BitSet IF_ID_CTRL =  new BitSet(1);
-	BitSet ID_EX_CTRL =  new BitSet(1);
-	BitSet EX_MEM_CTRL = new BitSet(7);
-	BitSet MEM_WB_CTRL = new BitSet(3);
+	private BitSet IF_ID_CTRL =  new BitSet(1);
+	private BitSet ID_EX_CTRL =  new BitSet(1);
+	private BitSet EX_MEM_CTRL = new BitSet(7);
+	private BitSet MEM_WB_CTRL = new BitSet(3);
+	
+	/**
+	 * After step() is called, each bit will represent whether
+	 * anything happened in the corresponding stage. Used only
+	 * by functions called by UI code, as a convenience.
+	 */
+	private BitSet stageOccurred = new BitSet(5);
 	
 	/**
 	 * Holds the exception that will be handled on the next clock cycle.
@@ -45,6 +52,8 @@ public class Simulator
 	
 	Coprocessor0 cp0 = new Coprocessor0();
 	
+
+	
 	public Simulator(Memory m)
 	{
 		memory = m;
@@ -55,6 +64,26 @@ public class Simulator
 		Arrays.fill(MEM_WB, 0);
 	}
 	
+	/**
+	 * Gets the name (the mnemonic) of the instruction which was just fetched in the last IF stage. 
+	 * @return a mnemonic, as a String
+	 */
+	public String getInstructionFetchedName()
+	{
+		//TODO: write a function which will extract the instruction name from this
+		//maybe one of the hash tables from 2pass will help?
+		return Integer.toHexString(IF_ID[0]);
+	}
+	
+	public char getExecuteOperationName()
+	{
+		return '+';
+	}
+	
+	public BitSet getStagesOccurred()
+	{
+		return stageOccurred;
+	}
 	
 	/**
 	 * Execute one clock cycle, simulating each of the five pipeline stages of the early MIPS processor.
@@ -74,12 +103,14 @@ public class Simulator
 	public void step()
 	{
 		MultiplyUnit.step();
+		stageOccurred.clear();
 		
 		/*
 		 * IF: Instruction fetch, phase 1.
 		 * Fetch the instruction pointed to by the PC and increment the PC by four.
 		 */
 		
+		stageOccurred.set(0);
 		int InstrF = memory.loadWord(PC);
 		int PCPlus4F = PC + 4;
 		int NewPCF = PCPlus4F;
@@ -95,6 +126,7 @@ public class Simulator
 		boolean BranchD = false, InBranchDelayD = false;
 		if ( ! isEmpty(IF_ID))
 		{
+			stageOccurred.set(1);
 			InstrD = IF_ID[0];
 			PCPlus4D = IF_ID[1];
 			
@@ -122,6 +154,7 @@ public class Simulator
 				InBranchDelayE = false, SignExtendE = false;
 		if ( ! isEmpty(ID_EX))
 		{
+			stageOccurred.set(2);
 			InstrE = ID_EX[0];
 			RsE = ID_EX[1];
 			RtE = ID_EX[2];
@@ -280,7 +313,7 @@ public class Simulator
 				/*
 				 * Handle coprocessor instructions.
 				 * Only coprocessor 0 is supported for now.
-				 * TODO: Technically, moves to/from coprocessors finish in the MEM stage. Maybe add more control lines?
+				 * TODO: Technically, moves to/from coprocessors finish in the MEM stage.
 				 */
 				int whichCoprocessor = (OpE & 0b11);
 				
@@ -300,6 +333,12 @@ public class Simulator
 				case 0x10: //rfe
 					int oldStatus = cp0.readRegister(Coprocessor0.STATUS);
 					cp0.writeRegister(Coprocessor0.STATUS, (oldStatus & 0xFFFFFFF0) | ((oldStatus >> 2) & 0x0000003F));
+					break;
+				default:
+					/*
+					 * According to Kane and Heinrich (1992), no exception is thrown
+					 * if the coprocessor instruction is not recognized.
+					 */
 					break;
 				}
 			}
@@ -406,6 +445,7 @@ public class Simulator
 				SignExtendM = false;
 		if ( ! isEmpty(EX_MEM))
 		{
+			stageOccurred.set(3);
 			AluOutM = EX_MEM[0];
 			WriteRegM = EX_MEM[2];
 			WriteDataM = EX_MEM[3];
@@ -486,6 +526,7 @@ public class Simulator
 		boolean RegWriteW = false, MemWriteW = false, MemToRegW = false;
 		if ( ! isEmpty(MEM_WB))
 		{
+			stageOccurred.set(4);
 			AluOutW =   MEM_WB[0];
 			WriteRegW = MEM_WB[2];
 			ReadDataW = MEM_WB[3];

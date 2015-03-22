@@ -1,4 +1,4 @@
-package ares.ui.temp;
+package ares.adapter;
 
 
 import ares.core.assembler.*;
@@ -10,15 +10,19 @@ import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.util.LinkedList;
 
-public class AssemblerTest {
+public class AssemblerTestAdapter
+{
 
-	public static void main(String[] args) throws FileNotFoundException
+	public AssemblerTestAdapter()
 	{
-		BufferedReader theFile = new BufferedReader(
+		BufferedReader theFile = null;
+		try {
+		theFile = new BufferedReader(
 				new InputStreamReader(
 						new FileInputStream(
 								new File("lexathon.asm")
 										   ), Charset.forName("UTF-8")));
+		} catch (FileNotFoundException e) { e.printStackTrace(); }
 		
 		try {
 			LinkedList<String> result = Tokenizer.tokenize(theFile, "lexathon.asm");
