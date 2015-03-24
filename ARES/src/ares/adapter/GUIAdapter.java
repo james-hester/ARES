@@ -26,6 +26,10 @@ public class GUIAdapter extends JFrame
 	public static final double SIMULATION_MAX_SPEED_HZ = 10.0;
 	public static final double SIMULATION_SPEED_STEP_SIZE = 0.1;
 	
+	public static final int FRAMES_PER_SECOND = 39;
+	public static final int SLOWDOWN_FACTOR = 5;
+	public static final int ANIMATION_STEP_DELAY = 5;
+	
 	
 	private Timer mainAnimationTimer, stallAnimationTimer, runSpeedTimer, repaintTimer;
 	private DisplayPanel pipelineDisplay;
@@ -107,7 +111,7 @@ public class GUIAdapter extends JFrame
 		
 		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		
-		mainAnimationTimer = new Timer(5, new AnimationActionListener());
+		mainAnimationTimer = new Timer(ANIMATION_STEP_DELAY * SLOWDOWN_FACTOR, new AnimationActionListener());
 		
 		runSpeedTimer = new Timer(Integer.MAX_VALUE, new ActionListener(){
 			@Override
@@ -119,7 +123,7 @@ public class GUIAdapter extends JFrame
 	
 		stallAnimationTimer = new Timer(20, new StallAnimationActionListener());
 		
-		repaintTimer = new Timer(1000 / 60, new ActionListener(){
+		repaintTimer = new Timer(1000 / FRAMES_PER_SECOND, new ActionListener(){
 			@Override
 			public void actionPerformed(ActionEvent e) {
 					pipelineDisplay.repaint();
@@ -260,13 +264,16 @@ public class GUIAdapter extends JFrame
 		@Override
 		public void actionPerformed(ActionEvent e)
 		{
-			pipelineDisplay.moveComponents();
-			if (pipelineDisplay.animationComplete())
+			for(int i = 0; i < SLOWDOWN_FACTOR; i++)
 			{
-				pipelineDisplay.resetAnimation();
-				pipelineDisplay.repaint();
-				mainAnimationTimer.stop();
-				repaintTimer.stop();
+				pipelineDisplay.moveComponents();
+				if (pipelineDisplay.animationComplete())
+				{
+					pipelineDisplay.resetAnimation();
+					pipelineDisplay.repaint();
+					mainAnimationTimer.stop();
+					repaintTimer.stop();
+				}
 			}
 		}
 	}
