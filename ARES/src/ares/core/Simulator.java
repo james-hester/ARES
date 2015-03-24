@@ -8,11 +8,12 @@ public class Simulator
 {
 	private Memory memory; //The simulator's memory.
 	
-	private static final boolean DEBUG = true; //When false, debugPrint() does nothing.
+	private static final boolean DEBUG = false; //When false, debugPrint() does nothing.
 	
 	boolean branchD = false;
 	int branchAmtD;
 	boolean hasNext = true;
+	String operationE = " ";
 	
 	/**
 	 * The pipeline registers and program counter.
@@ -30,6 +31,9 @@ public class Simulator
 	private BitSet ID_EX_CTRL =  new BitSet(1);
 	private BitSet EX_MEM_CTRL = new BitSet(7);
 	private BitSet MEM_WB_CTRL = new BitSet(3);
+	
+	private boolean stall = false;
+	private boolean stallMultiplier = false;
 	
 	/**
 	 * After step() is called, each bit will represent whether
@@ -70,19 +74,27 @@ public class Simulator
 	 */
 	public String getInstructionFetchedName()
 	{
-		//TODO: write a function which will extract the instruction name from this
-		//maybe one of the hash tables from 2pass will help?
-		return Integer.toHexString(IF_ID[0]);
+		return InstructionSet.getMnemonic(IF_ID[0]);
 	}
 	
-	public char getExecuteOperationName()
+	public String getExecuteOperationName()
 	{
-		return '+';
+		return operationE;
 	}
 	
 	public BitSet getStagesOccurred()
 	{
 		return stageOccurred;
+	}
+	
+	public boolean exceptionOccurred()
+	{
+		return currentException == null;
+	}
+	
+	public boolean normalStallOccurred()
+	{
+		return stall;
 	}
 	
 	/**
@@ -179,25 +191,32 @@ public class Simulator
 				RegWriteE = true;
 				WriteRegE = RdNumE;
 				
+				operationE = " ";
 				switch (FunctE)
 				{
 				case 0x00: //sll
 					AluOutE = RtE << (InstrE >> 6 & 0b11111);
+					operationE = "<<";
 					break;
 				case 0x02: //srl
 					AluOutE = RtE >>> (InstrE >> 6 & 0b11111);
+					operationE = ">>>";
 					break;
 				case 0x03: //sra
 					AluOutE = RtE >> (InstrE >> 6 & 0b11111);
+					operationE = ">>";
 					break;
 				case 0x04: //sllv
 					AluOutE = RtE << (RsE & 0b11111);
+					operationE = "<<";
 					break;
 				case 0x06: //srlv
 					AluOutE = RtE >>> (RsE & 0b11111);
+					operationE = ">>>";
 					break;
 				case 0x07: //srav
 					AluOutE = RtE >> (RsE & 0b11111);
+					operationE = ">>";
 					break;
 				case 0x08: //jr
 					//do nothing; jump has already been performed
@@ -206,6 +225,7 @@ public class Simulator
 					break;
 				case 0x09: //jalr
 					AluOutE = PCPlus4E + 4;
+					operationE = "+";
 					RtNumE = 31;
 					RegWriteE = true;
 					break;
@@ -260,9 +280,11 @@ public class Simulator
 					{
 						setException(MIPSException.OVERFLOW, PC - 8, InBranchDelayE);
 					}
+					operationE = "+";
 					break;
 				case 0x21: //addu
 					AluOutE = RsE + RtE;
+					operationE = "+";
 					break;
 				case 0x22: //sub
 					try
@@ -348,6 +370,7 @@ public class Simulator
 				{
 				case 0x03: //jal
 					AluOutE = PCPlus4E + 4;
+					operationE = "+";
 					RtNumE = 31;
 					RegWriteE = true;
 					break;
@@ -363,6 +386,7 @@ public class Simulator
 					break;
 				case 0x08: //addi
 					AluOutE = (RsE + (SignImmE & 0x0000FFFF)); //zero-extended immediate used for andi
+					operationE = "+";
 					RegWriteE = true;
 					break;
 				case 0x0c: //andi
@@ -371,6 +395,7 @@ public class Simulator
 					break;
 				case 0x09: //addiu
 					AluOutE = (RsE + SignImmE);
+					operationE = "+";
 					RegWriteE = true;
 					break;
 				case 0x0f: //lui
@@ -379,35 +404,42 @@ public class Simulator
 					break;
 				case 0x20: //lb
 					AluOutE = (RsE + SignImmE);
+					operationE = "+";
 					RegWriteE = MemToRegE = true;
 					MemByteE = SignExtendE = true;
 					break;
 				case 0x21: //lh
 					AluOutE = (RsE + SignImmE);
+					operationE = "+";
 					RegWriteE = MemToRegE = true;
 					MemHalfwordE = SignExtendE = true;
 					break;
 				case 0x23: //lw
 					AluOutE = (RsE + SignImmE);
+					operationE = "+";
 					RegWriteE = MemToRegE = true;
 					break;
 				case 0x24: //lbu
 					AluOutE = (RsE + SignImmE);
+					operationE = "+";
 					RegWriteE = MemToRegE = true;
 					MemByteE = true;
 					break;
 				case 0x25: //lhu
 					AluOutE = (RsE + SignImmE);
+					operationE = "+";
 					RegWriteE = MemToRegE = true;
 					MemHalfwordE = true;
 					break;
 				case 0x27: //sh
 					AluOutE = (RsE + SignImmE);
+					operationE = "+";
 					WriteDataE = RtE;
 					MemWriteE = MemHalfwordE = true;
 					break;
 				case 0x2b: //sw
 					AluOutE = (RsE + SignImmE);
+					operationE = "+";
 					WriteDataE = RtE;
 					MemWriteE = true;
 					break;
@@ -416,6 +448,7 @@ public class Simulator
 						AluOutE = 1;
 					else
 						AluOutE = 0;
+					operationE = "<";
 					RegWriteE = true;
 					break;
 				case 0x0b: //sltiu
@@ -423,10 +456,9 @@ public class Simulator
 						AluOutE = 1;
 					else
 						AluOutE = 0;
+					operationE = "<";
 					RegWriteE = true;
 					break;
-
-
 				default:
 					setException(MIPSException.ILLEGAL_INSTRUCTION, PC - 8, InBranchDelayE);
 					break;
@@ -571,8 +603,10 @@ public class Simulator
 				RsD = AluOutE;
 			
 			else if ((RsNumD != 0) && (RsNumD == WriteRegM) && RegWriteM)
+			{
+				System.err.println("fwding 1!   " + RsNumD + "   " + InstrD);
 				RsD = MemToRegM ? ReadDataM : AluOutM;
-			
+			}
 			else
 				RsD = memory.readRegister(RsNumD);
 			
@@ -582,8 +616,10 @@ public class Simulator
 				RtD = AluOutE;
 			
 			else if ((RtNumD != 0) && (RtNumD == WriteRegM) && RegWriteM)
+			{
+				System.err.println("fwding!   " + RtNumD + "   " + InstrD);
 				RtD = MemToRegM ? ReadDataM : AluOutM;
-			
+			}
 			else
 				RtD = memory.readRegister(RtNumD);
 
@@ -622,45 +658,44 @@ public class Simulator
 			}
 		}
 		
-
 		
 		/*
 		 * Stall inserter for lw data hazard.
-		 */
-		boolean StallF = false, StallD = false, FlushE = false, stall = false;
-		if (OpE == 0x23 && (RtNumE == RsNumD || RtNumE == RtNumD))
+		 */		
+		if ( MemToRegE && (RtNumE == RsNumD || RtNumE == RtNumD) )
 		{
 			stall = true;
 		}
 		/*
 		 * Stall inserter for branch data hazard.
 		 */
-		if (BranchD && //equivalent to BranchD
+		else if (BranchD &&
 				((( RegWriteE && (WriteRegE == RsNumD || WriteRegE == RtNumD) ) || 
 				(( (MemToRegM) && (WriteRegM == RsNumD || WriteRegM == RtNumD) )))
 				))
 		{
 			stall = true;
 		}
-		
+		else
+		{
+			stall = false;
+		}
 		if (stallForMultiplierE)
 		{
-			stall = true;
+			stall = stallMultiplier = true;
+			
 		}
-		StallF = StallD = FlushE = stall;
-		
-		
 		
 		/*-------------------------------------------------------------------*
 		 * Finally, write the temporary variables to the pipeline registers. *
 		 *-------------------------------------------------------------------*/
 		
-		if ( ! StallF)
+		if ( ! stall)
 		{
 		PC = NewPCF;
 		}
 		
-		if ( ! StallD)
+		if ( ! stall)
 		{
 		IF_ID[0] = InstrF;
 		IF_ID[1] = (InstrF > 0) ? PCPlus4F : 0;
@@ -668,7 +703,7 @@ public class Simulator
 		IF_ID_CTRL.set(0, InBranchDelayF);
 		}
 
-		if ( ! FlushE)
+		if ( ! stall)
 		{
 		ID_EX[0] = InstrD;
 		ID_EX[1] = RsD;
@@ -705,7 +740,7 @@ public class Simulator
 		MEM_WB_CTRL.set(2, MemToRegM);
 
 
-		StallF = StallD = FlushE = false;
+
 				
 		/*
 		 * Exception handler.

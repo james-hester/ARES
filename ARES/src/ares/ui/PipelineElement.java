@@ -12,7 +12,8 @@ import javax.swing.JComponent;
 
 public class PipelineElement
 {
-	private BitSet hasStage = new BitSet(5);
+	BitSet hasStage = new BitSet(5);
+	BitSet hasHole = new BitSet(5);
 	
 	private double dbX = 0, dbY = 0;
 	private int x, y;
@@ -24,6 +25,8 @@ public class PipelineElement
 	{
 		move(x, y);
 		hasStage.clear();
+		hasStage.set(0);
+		hasHole.clear();
 	}
 	
 	public void setStage(int which, boolean newValue)
@@ -34,6 +37,16 @@ public class PipelineElement
 	public boolean getStage(int which)
 	{
 		return hasStage.get(which);
+	}
+	
+	public void setHole(int which, boolean newValue)
+	{
+		hasHole.set(which, newValue);
+	}
+	
+	public boolean getHole(int which)
+	{
+		return hasHole.get(which);
 	}
 	
 	public void move(double xDelta, double yDelta)
@@ -48,25 +61,48 @@ public class PipelineElement
 	{
 		y += (4 * HEIGHT);
 		
+		
 		g2.setColor(Color.WHITE);
+		
+		
+		if (hasHole.get(0))
+			y -= HEIGHT;
 		if (hasStage.get(0))
+		{
 			drawIF(g2);
+			y -= HEIGHT;
+		}
 		
-		y -= HEIGHT;
+		if (hasHole.get(1))
+			y -= HEIGHT;
 		if (hasStage.get(1))
+		{
 			drawID(g2);
-		
-		y -= HEIGHT;
+			y -= HEIGHT;
+		}
+
+		if (hasHole.get(2))
+			y -= HEIGHT;		
 		if (hasStage.get(2))
+		{
 			drawEX(g2);
+			y -= HEIGHT;
+		}
 		
-		y -= HEIGHT;
+		if (hasHole.get(3))
+			y -= HEIGHT;
 		if (hasStage.get(3))
+		{
 			drawMEM(g2);
-		
-		y -= HEIGHT;
+			y -= HEIGHT;
+		}
+
+		if (hasHole.get(4))
+			y -= HEIGHT;		
 		if (hasStage.get(4))
+		{
 			drawWB(g2);
+		}
 	}
 	
 	/*

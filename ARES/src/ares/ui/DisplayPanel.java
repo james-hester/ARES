@@ -12,8 +12,7 @@ import javax.swing.*;
 
 
 public class DisplayPanel extends JPanel
-{
-
+{	
 	ArrayList<PipelineElement> pipelineElementList;
 	ArrayList<InstructionLabel> instructionList;
 	Timer t1;
@@ -38,6 +37,10 @@ public class DisplayPanel extends JPanel
 		pipelineElementList.add(new PipelineElement(200, -148));
 		pipelineElementList.add(new PipelineElement(280, -74));
 		pipelineElementList.add(new PipelineElement(360, 0));
+		
+		for(PipelineElement e : pipelineElementList)
+			e.setStage(0, false);
+			
 		pipelineElementList.add(new PipelineElement(440, 74));
 		pipelineElementList.add(new PipelineElement(520, 148));
 		pipelineElementList.add(new PipelineElement(600, 222));
@@ -63,7 +66,6 @@ public class DisplayPanel extends JPanel
 		}
 		instructionList.get(2).move(-0.15, dY);
 		instructionList.get(3).move(0.15, dY);
-		repaint();
 	}
 	
 	public PipelineElement getNextElement()
@@ -71,15 +73,37 @@ public class DisplayPanel extends JPanel
 		return pipelineElementList.get(3);
 	}
 	
+	public PipelineElement getCurrentElement()
+	{
+		return pipelineElementList.get(2);
+	}
+	
+	public InstructionLabel getCurrentInstruction()
+	{
+		return instructionList.get(4);
+	}
+	
+	public boolean isEmpty()
+	{
+		for(InstructionLabel i : instructionList)
+		{
+			if ( ! i.getText().equals(""))
+				return false;
+		}
+		return true;
+	}
+	
 	public void propagateStages()
 	{
-		for(int i = 0; i < 3; i++)
+		for(int j = 4; j < 6; j++)
 		{
-			if (pipelineElementList.get(3).getStage(i))
-			{
-				pipelineElementList.get(4).setStage(i + 1, true);
-				pipelineElementList.get(5).setStage(i + 2, true);
-			}
+			for(int i = 0; i < 4; i++)
+				pipelineElementList.get(j).setStage(i + 1, pipelineElementList.get(j - 1).getStage(i));			
+			
+			for(int i = 4; i > 0; i--)
+				pipelineElementList.get(j).setHole(i, pipelineElementList.get(j - 1).getHole(i - 1));
+			
+			pipelineElementList.get(j).setHole(0, false);
 		}
 	}
 	
@@ -102,8 +126,7 @@ public class DisplayPanel extends JPanel
 			pipelineElementList.set(i, pipelineElementList.get(i + 1));
 		}
 		instructionList.set(5, new InstructionLabel("", 0, 416));
-		pipelineElementList.set(5, new PipelineElement(600, 222));
-			
+		pipelineElementList.set(5, new PipelineElement(600, 222));			
 	}
 	
 	@Override

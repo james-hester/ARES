@@ -51,6 +51,37 @@ public final class InstructionSet
 		instructionSet.put("sw",	new int[]{1, 0x2b      });
 		instructionSet.put("sub",	new int[]{0, 0x00, 0x22});
 		instructionSet.put("subu",	new int[]{0, 0x00, 0x23});
+		
+		instructionSet.put("mfhi",	new int[]{0, 0x00, 0x10      });
+		instructionSet.put("mthi",	new int[]{0, 0x00, 0x11      });
+		instructionSet.put("mflo",	new int[]{0, 0x00, 0x12      });
+		instructionSet.put("mtlo",	new int[]{0, 0x00, 0x13      });
+		instructionSet.put("mult",	new int[]{0, 0x00, 0x18      });
+		instructionSet.put("multu",	new int[]{0, 0x00, 0x19      });
+		instructionSet.put("div",	new int[]{0, 0x00, 0x1a      });
+		instructionSet.put("divu",	new int[]{0, 0x00, 0x1b      });
+	}
+	
+	private static final HashMap<Integer, String> rFormatInstructions = new HashMap<>();
+	static
+	{
+		for(String s : instructionSet.keySet())
+		{
+			int[] i = instructionSet.get(s);
+			if(i.length > 2 && i[1] == 0)
+				rFormatInstructions.put(i[2], s);
+		}
+	}
+	
+	private static final HashMap<Integer, String> iFormatInstructions = new HashMap<>();
+	static
+	{
+		for(String s : instructionSet.keySet())
+		{
+			int[] i = instructionSet.get(s);
+			if(i[1] != 0)
+				iFormatInstructions.put(i[1], s);
+		}
 	}
 	
 	public static boolean contains(String mnemonic)
@@ -77,5 +108,25 @@ public final class InstructionSet
 		if (temp == null || temp.length < 3)
 			return -1;
 		return temp[2];
+	}
+	
+	/**
+	 * "Disassembles" an instruction into a mnemonic. Parses 0 as "nop" and instructions not in the instruction set as "???".
+	 * @param instruction
+	 * @return
+	 */
+	public static String getMnemonic(int instruction)
+	{
+		if (instruction == 0)
+			return "nop";
+		int opcode = (instruction >>> 26);
+		String result;
+		
+		if (opcode == 0)
+			result = rFormatInstructions.get(instruction & 0b111111);
+		else
+			result = iFormatInstructions.get(opcode);
+
+		return (result == null) ? "???" : result;
 	}
 }

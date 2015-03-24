@@ -8,17 +8,6 @@ eret
 store1: .space 4
 .text
 
-la $t1, address1
-sw $t1, store1
-jr $t1 #first this jump will occur,
-j address2 #but not this one--it turns into a nop!
-addi $t1, $t1, 1 #this instruction will not be executed
-#^^^^^^^^^^^^^^^^ MARS will execute this instruction...why?
-address1:
-ori $v0, 10
-ori $a1, 20 
-address2:
-ori $a2, 30
 lw $a3, store1 #stall should occur here (lwstall)
 addi $a3, $a3, 10 #stall should also occur here (branchstall)
 beq $a3, $a2, address2
@@ -39,6 +28,7 @@ mfhi $v1 #no stall
 add $v0, $v0, $v1
 add $v0, $v0, $a1
 mult $v0, $v0
+address2:
 nop
 nop
 nop

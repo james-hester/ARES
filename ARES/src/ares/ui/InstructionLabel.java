@@ -41,4 +41,9 @@ public class InstructionLabel extends AnimatedComponent {
 		this.text = text;
 	}
 	
+	public String getText()
+	{
+		return text;
+	}
+	
 }

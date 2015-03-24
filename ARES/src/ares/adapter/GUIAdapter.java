@@ -16,10 +16,18 @@ import ares.core.Simulator;
 import ares.ui.DisplayPanel;
 import ares.ui.PipelineElement;
 
-public class GUIAdapter extends JFrame implements ActionListener
+public class GUIAdapter extends JFrame
 {
 
-	private Timer animationTimer, runSpeedTimer;
+	public static final int ANIMATION_DEFAULT_SPEED = 5;
+	
+	public static final double SIMULATION_DEFAULT_SPEED_HZ = 1.0;
+	public static final double SIMULATION_MIN_SPEED_HZ = 0.1;
+	public static final double SIMULATION_MAX_SPEED_HZ = 10.0;
+	public static final double SIMULATION_SPEED_STEP_SIZE = 0.1;
+	
+	
+	private Timer mainAnimationTimer, stallAnimationTimer, runSpeedTimer, repaintTimer;
 	private DisplayPanel pipelineDisplay;
 	
 	private Simulator simulator;
@@ -42,7 +50,7 @@ public class GUIAdapter extends JFrame implements ActionListener
 			@Override
 			public void actionPerformed(ActionEvent e)
 			{
-				if (animationTimer.isRunning() || runSpeedTimer.isRunning())
+				if (mainAnimationTimer.isRunning() || runSpeedTimer.isRunning())
 					return;
 				simulateCycle();
 			}
@@ -62,7 +70,11 @@ public class GUIAdapter extends JFrame implements ActionListener
 		});
 		runButton.setEnabled(false);
 		
-		runSpeed = new JSpinner(new SpinnerNumberModel(1.0, 0.1, 3.0, 0.1));
+		runSpeed = new JSpinner(new SpinnerNumberModel(
+				SIMULATION_DEFAULT_SPEED_HZ, 
+				SIMULATION_MIN_SPEED_HZ, 
+				SIMULATION_MAX_SPEED_HZ, 
+				SIMULATION_SPEED_STEP_SIZE));
 		
 		JMenuBar menuBar = new JMenuBar();
 			JMenu file = new JMenu("File");
@@ -95,14 +107,23 @@ public class GUIAdapter extends JFrame implements ActionListener
 		
 		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		
-		animationTimer = new Timer(5, this);
+		mainAnimationTimer = new Timer(5, new AnimationActionListener());
+		
 		runSpeedTimer = new Timer(Integer.MAX_VALUE, new ActionListener(){
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				System.out.println("here");
-				simulateCycle();
+					simulateCycle();
 			}
 			
+		});
+	
+		stallAnimationTimer = new Timer(20, new StallAnimationActionListener());
+		
+		repaintTimer = new Timer(1000 / 60, new ActionListener(){
+			@Override
+			public void actionPerformed(ActionEvent e) {
+					pipelineDisplay.repaint();
+			}	
 		});
 		
 		this.getContentPane().add(pipelineDisplay, BorderLayout.CENTER);
@@ -123,51 +144,55 @@ public class GUIAdapter extends JFrame implements ActionListener
 		else
 		{
 			runButton.setText("Pause");
-			System.err.println((int)(((Double) runSpeed.getValue()) * 1000) );
-			runSpeedTimer.setDelay( (int)(((Double) runSpeed.getValue()) * 1000) );
+			runSpeedTimer.setDelay( (int)(( 1000.0 / (Double) runSpeed.getValue()) ) );
 			runSpeedTimer.setInitialDelay(runSpeedTimer.getDelay());
+			mainAnimationTimer.setDelay(Math.min(5, runSpeedTimer.getDelay() / 80));
 			runSpeedTimer.start();
 		}
 	}
 	
 	public void loadBinaryFile()
 	{
-		memory = new Memory();
-        
+		
 		JFileChooser openDlg = new JFileChooser();
 		int result = openDlg.showOpenDialog(this);
 		
 		if (result == JFileChooser.APPROVE_OPTION)
 		{
 			File theFile = openDlg.getSelectedFile();
-			try
-			{
-				Scanner readFile = new Scanner(theFile);
-				int i = 0;
-				while (readFile.hasNextLine())
-				{ 
-					int a = Integer.parseUnsignedInt(readFile.nextLine(), 16);
-					memory.storeWord(Memory.TEXT_SEGMENT_START_ADDRESS + i, a);
-					i += 4;
-				}
-				memory.setMaxInstAddr(Memory.TEXT_SEGMENT_START_ADDRESS + i);
-				
-				readFile.close();
-			} 
-			catch (Exception e)  
-			{
-				JOptionPane.showMessageDialog(this, "An error occurred while loading the specified\nfile. Please ensure the file is in MARS'"
-						+ " \"Hexadecimal Text\" format\n(with one hexadecimal number per line) and try again.",
-						"Error", JOptionPane.ERROR_MESSAGE);
-				return;
-			}
-			
-			simulator = new Simulator(memory);
-			
+			loadBinaryFile(theFile);
 			fileLabel.setText("File loaded: " + theFile.getName());
 			stepButton.setEnabled(true);
 			runButton.setEnabled(true);
 		}
+	}
+	
+	private void loadBinaryFile(File theFile)
+	{
+		memory = new Memory();
+		try
+		{
+			Scanner readFile = new Scanner(theFile);
+			int i = 0;
+			while (readFile.hasNextLine())
+			{ 
+				int a = Integer.parseUnsignedInt(readFile.nextLine(), 16);
+				memory.storeWord(Memory.TEXT_SEGMENT_START_ADDRESS + i, a);
+				i += 4;
+			}
+			memory.setMaxInstAddr(Memory.TEXT_SEGMENT_START_ADDRESS + i);
+			
+			readFile.close();
+		} 
+		catch (Exception e)  
+		{
+			JOptionPane.showMessageDialog(this, "An error occurred while loading the specified\nfile. Please ensure the file is in MARS'"
+					+ " \"Hexadecimal Text\" format\n(with one hexadecimal number per line) and try again.",
+					"Error", JOptionPane.ERROR_MESSAGE);
+			return;
+		}
+		
+		simulator = new Simulator(memory);
 	}
 	
 	public void simulateCycle()
@@ -177,27 +202,72 @@ public class GUIAdapter extends JFrame implements ActionListener
 		 * Then, do the animation.
 		 */
 		
-		simulator.step();
-		pipelineDisplay.addInstruction(simulator.getInstructionFetchedName());
-		
-		for(int i = 0; i < 5; i++)
-			pipelineDisplay.getNextElement().setStage(i, simulator.getStagesOccurred().get(i));
-		
-		pipelineDisplay.propagateStages();
-		
-		animationTimer.start();
+		if (simulator.hasNextInstruction())
+		{
+			simulator.step();
+	
+			pipelineDisplay.addInstruction(simulator.getInstructionFetchedName());
+			
+			if (simulator.getInstructionFetchedName().equals("nop"))
+			{
+				pipelineDisplay.getNextElement().setHole(0, true);
+				pipelineDisplay.getNextElement().setStage(0, false);
+			}
+			else for(int i = 0; i < 5; i++)
+				pipelineDisplay.getNextElement().setStage(i, simulator.getStagesOccurred().get(i));	
+			
+			if ( simulator.normalStallOccurred() )
+			{
+				pipelineDisplay.getCurrentInstruction().setText("<stall>");
+				pipelineDisplay.getCurrentElement().setHole(0, true);
+				pipelineDisplay.getCurrentElement().setStage(0, false);
+				pipelineDisplay.getNextElement().setHole(1, true);
+				pipelineDisplay.getNextElement().setStage(1, false);	
+			}
+			
+			pipelineDisplay.propagateStages();
+		}
+		else
+		{
+			if (pipelineDisplay.isEmpty())
+			{
+				fileLabel.setText("File loaded: <none>");
+				stepButton.setEnabled(false);
+				runButton.setEnabled(false);
+				runSpeedTimer.stop();
+			}
+			pipelineDisplay.addInstruction("");
+			pipelineDisplay.getNextElement().setHole(0, true);
+			pipelineDisplay.getNextElement().setStage(0, false);
+			pipelineDisplay.propagateStages();
+		}
+		mainAnimationTimer.start();
+		repaintTimer.start();
 	}
 	
-	
-	//TODO this really should be its own class, anonymous or otherwise (probably otherwise)
-	@Override
-	public void actionPerformed(ActionEvent e)
+	class StallAnimationActionListener implements ActionListener
 	{
-		pipelineDisplay.moveComponents();
-		if (pipelineDisplay.animationComplete())
+		@Override
+		public void actionPerformed(ActionEvent e)
 		{
-			pipelineDisplay.resetAnimation();
-			animationTimer.stop();
+			
+		}
+		
+	}
+	
+	class AnimationActionListener implements ActionListener
+	{
+		@Override
+		public void actionPerformed(ActionEvent e)
+		{
+			pipelineDisplay.moveComponents();
+			if (pipelineDisplay.animationComplete())
+			{
+				pipelineDisplay.resetAnimation();
+				pipelineDisplay.repaint();
+				mainAnimationTimer.stop();
+				repaintTimer.stop();
+			}
 		}
 	}
 }
