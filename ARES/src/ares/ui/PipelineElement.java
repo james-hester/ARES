@@ -98,7 +98,6 @@ public class PipelineElement
 	
 	public void setWBData(String registerWritten)
 	{
-		System.out.println("rw: " + registerWritten);
 		this.registerW = registerWritten;
 	}
 	

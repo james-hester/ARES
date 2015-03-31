@@ -14,7 +14,7 @@ public class Simulator
 	String operationE = " ";
 	private boolean stall = false;
 	private boolean stallMultiplier = false;
-	private boolean wroteReg = false;
+	private int wroteReg = 0;
 	
 	/**
 	 * The pipeline registers and program counter.
@@ -155,7 +155,7 @@ public class Simulator
 	
 	public String getWBData()
 	{
-		return wroteReg ? InstructionSet.getRegisterName(MEM_WB[2]) : "";
+		return wroteReg == 0 ? "" : InstructionSet.getRegisterName(wroteReg);
 	}
 	
 	public BitSet getForwardingOccurred()
@@ -186,7 +186,7 @@ public class Simulator
 		MultiplyUnit.step();
 		stageOccurred.clear();
 		forwardingOccurred.clear();
-		wroteReg = false;
+		wroteReg = 0;
 		
 		/*
 		 * IF: Instruction fetch, phase 1.
@@ -660,7 +660,7 @@ public class Simulator
 			if (RegWriteW)
 			{
 				memory.writeRegister(WriteRegW, ResultW);
-				wroteReg = true;
+				wroteReg = WriteRegW;
 			}
 		}		
 		
