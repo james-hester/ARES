@@ -2,7 +2,6 @@ package ares.core;
 
 import java.util.Arrays;
 import java.util.BitSet;
-import java.util.LinkedList;
 
 public class Simulator
 {
@@ -10,10 +9,12 @@ public class Simulator
 	
 	private static final boolean DEBUG = false; //When false, debugPrint() does nothing.
 	
-	boolean branchD = false;
-	int branchAmtD;
+	private boolean branchOccurred = false;
 	boolean hasNext = true;
 	String operationE = " ";
+	private boolean stall = false;
+	private boolean stallMultiplier = false;
+	private boolean wroteReg = false;
 	
 	/**
 	 * The pipeline registers and program counter.
@@ -31,16 +32,19 @@ public class Simulator
 	private BitSet ID_EX_CTRL =  new BitSet(1);
 	private BitSet EX_MEM_CTRL = new BitSet(7);
 	private BitSet MEM_WB_CTRL = new BitSet(3);
-	
-	private boolean stall = false;
-	private boolean stallMultiplier = false;
+
 	
 	/**
 	 * After step() is called, each bit will represent whether
-	 * anything happened in the corresponding stage. Used only
-	 * by functions called by UI code, as a convenience.
+	 * anything happened in the corresponding stage.
 	 */
 	private BitSet stageOccurred = new BitSet(5);
+	
+	/**
+	 * 
+	 */
+	private BitSet forwardingOccurred = new BitSet(6);
+	
 	
 	/**
 	 * Holds the exception that will be handled on the next clock cycle.
@@ -77,9 +81,9 @@ public class Simulator
 		return InstructionSet.getMnemonic(IF_ID[0]);
 	}
 	
-	public String getExecuteOperationName()
+	public String getInstructionFetched()
 	{
-		return operationE;
+		return InstructionSet.getInstruction(IF_ID[0]);
 	}
 	
 	public BitSet getStagesOccurred()
@@ -92,18 +96,83 @@ public class Simulator
 		return currentException == null;
 	}
 	
+	public boolean branchOccurred()
+	{
+		return branchOccurred;
+	}
+	
 	public boolean normalStallOccurred()
 	{
 		return stall;
 	}
 	
+	public boolean multiplierStallOccurred()
+	{
+		return stallMultiplier;
+	}
+	
+	public String[] getIDData()
+	{
+		int OpD = (ID_EX[0] >>> 26);
+		if (OpD == 0)
+			return new String[]{
+				"Rs: " + InstructionSet.getRegisterName((ID_EX[0] >> 21) & 0b11111),
+				"Rt: " + InstructionSet.getRegisterName((ID_EX[0] >> 16) & 0b11111)};
+		else
+			return new String[]{
+				"Rs: " + InstructionSet.getRegisterName((ID_EX[0] >> 21) & 0b11111),
+				"Imm: " + Integer.toString((ID_EX[3]))};
+	}
+	
+	public String getEXData()
+	{
+		return operationE;
+	}
+	
+	/**
+	 * 
+	 * @return 0: nothing happened
+	 * 1: read
+	 * 2: write
+	 */
+	public int getMEMOperation()
+	{
+		if (MEM_WB_CTRL.get(1))
+			return 2;
+		if (MEM_WB_CTRL.get(2))
+			return 1;
+		return 0;
+	}
+	
+	public String getMEMAddress()
+	{
+		String result = Integer.toHexString(MEM_WB[0]);
+		int len = result.length();
+		for(int i = 0; i < 8 - len; i++)
+			result = "0" + result;
+		return "0x" + result;
+	}
+	
+	public String getWBData()
+	{
+		return wroteReg ? InstructionSet.getRegisterName(MEM_WB[2]) : "";
+	}
+	
+	public BitSet getForwardingOccurred()
+	{
+		return forwardingOccurred;
+	}
+	
 	/**
 	 * Execute one clock cycle, simulating each of the five pipeline stages of the early MIPS processor.
-	 * This method is broken into three parts:
+	 * This method is broken into five parts:
 	 * 		1. For each of the five pipeline stages, if there is any data in the pipeline register preceding it,
 	 * 		   then complete the pipelined task and store the result in temporary variables.
-	 * 		2. Anticipate and handle hazards.
-	 * 		3. Store the values of the temporary variables into the pipeline registers.
+	 * 		2. Perform phase 2 of the ID stage, and in doing so forward correct values to the EX stage.
+	 * 			(The second phases of other stages are not yet simulated.)
+	 * 		3. Insert a pipeline stall if necessary.
+	 * 		4. Store the values of the temporary variables into the pipeline registers.
+	 * 		5. Handle exceptions.
 	 * 
 	 * Using temporary variables prevents instructions in various cycles from interfering with each other. 
 	 * These variables have names which--for the most part--correspond to the labels on the wires 
@@ -116,6 +185,8 @@ public class Simulator
 	{
 		MultiplyUnit.step();
 		stageOccurred.clear();
+		forwardingOccurred.clear();
+		wroteReg = false;
 		
 		/*
 		 * IF: Instruction fetch, phase 1.
@@ -181,6 +252,7 @@ public class Simulator
 			RdNumE = (InstrE >> 11 & 0b11111);
 			FunctE = (InstrE & 0b111111);
 			
+			operationE = "";
 			if (OpE == 0)
 			{
 				/*
@@ -191,7 +263,7 @@ public class Simulator
 				RegWriteE = true;
 				WriteRegE = RdNumE;
 				
-				operationE = " ";
+				
 				switch (FunctE)
 				{
 				case 0x00: //sll
@@ -295,27 +367,35 @@ public class Simulator
 					{
 						setException(MIPSException.OVERFLOW, PC - 8, InBranchDelayE);
 					}
+					operationE = "-";
 					break;
 
 				case 0x23: //subu
 					AluOutE = RsE - RtE;
+					operationE = "-";
 					break;
 				case 0x24: //and
 					AluOutE = RsE & RtE;
+					operationE = "&";
 					break;
 				case 0x25: //or
 					AluOutE = RsE | RtE;
+					operationE = "|";
 					break;
 				case 0x26: //xor
 					AluOutE = RsE ^ RtE;
+					operationE = "\u2295"; //XOR symbol
 					break;
 				case 0x27: //nor
 					AluOutE = ~(RsE | RtE);
+					operationE = "\u2193"; //down arrow used for NOR
+					break;
 				case 0x2a: //slt
 					if (RsE < RtE)
 						AluOutE = 1;
 					else
 						AluOutE = 0;
+					operationE = "slt";
 					RegWriteE = true;
 					break;
 				case 0x2b: //sltu
@@ -323,6 +403,7 @@ public class Simulator
 						AluOutE = 1;
 					else
 						AluOutE = 0;
+					operationE = "slt";
 					RegWriteE = true;
 					break;
 				default:
@@ -448,7 +529,7 @@ public class Simulator
 						AluOutE = 1;
 					else
 						AluOutE = 0;
-					operationE = "<";
+					operationE = "slt";
 					RegWriteE = true;
 					break;
 				case 0x0b: //sltiu
@@ -456,7 +537,7 @@ public class Simulator
 						AluOutE = 1;
 					else
 						AluOutE = 0;
-					operationE = "<";
+					operationE = "slt";
 					RegWriteE = true;
 					break;
 				default:
@@ -465,6 +546,8 @@ public class Simulator
 				}
 				WriteRegE = RtNumE;
 			}
+			if (operationE.equals(""))
+				operationE = InstructionSet.getMnemonic(InstrE);
 			
 		}
 		
@@ -515,7 +598,6 @@ public class Simulator
 										 .setBadVAddr(AluOutM));
 					}
 				}
-				debugPrint("MEM: memory write at address " + AluOutM + " : " + WriteDataM);
 			}
 			else if (MemToRegM) //if MemToRegM is set, read
 			{
@@ -543,7 +625,6 @@ public class Simulator
 										 .setBadVAddr(AluOutM));
 					}
 				}
-				debugPrint("MEM: memory read at address " + AluOutM + " : " + ReadDataM);
 			}
 			
 		}
@@ -579,12 +660,14 @@ public class Simulator
 			if (RegWriteW)
 			{
 				memory.writeRegister(WriteRegW, ResultW);
+				wroteReg = true;
 			}
 		}		
 		
 		/*
 		 * ID, phase 2.
 		 * Read from registers and perform branches/jumps.
+		 * Contains forwarding logic to EX stage.
 		 */
 		if ( ! isEmpty(IF_ID))
 		{
@@ -600,12 +683,16 @@ public class Simulator
 			//Forward to SrcAE
 			
 			if ((RsNumD != 0) && (RsNumD == WriteRegE) && RegWriteE)
+			{
+				//Forwarding from EX/MEM register to top branch of ALU
 				RsD = AluOutE;
-			
+				forwardingOccurred.set(0);
+			}
 			else if ((RsNumD != 0) && (RsNumD == WriteRegM) && RegWriteM)
 			{
-				System.err.println("fwding 1!   " + RsNumD + "   " + InstrD);
+				//Forwarding from MEM/WB register to top branch of ALU
 				RsD = MemToRegM ? ReadDataM : AluOutM;
+				forwardingOccurred.set(1);
 			}
 			else
 				RsD = memory.readRegister(RsNumD);
@@ -613,23 +700,41 @@ public class Simulator
 			//Forward to SrcBE (identical, except Rt is used instead of Rs)
 			
 			if ((RtNumD != 0) && (RtNumD == WriteRegE) && RegWriteE)
+			{
 				RtD = AluOutE;
-			
+				forwardingOccurred.set(2);
+			}
 			else if ((RtNumD != 0) && (RtNumD == WriteRegM) && RegWriteM)
 			{
-				System.err.println("fwding!   " + RtNumD + "   " + InstrD);
 				RtD = MemToRegM ? ReadDataM : AluOutM;
+				forwardingOccurred.set(3);
 			}
 			else
 				RtD = memory.readRegister(RtNumD);
 
+			
+			/*
+			 * Perform branches and jumps.
+			 * Note: the branch mechanism is separate from the jump mechanism,
+			 * but both (if they occur) change NewPCF. To indicate (for UI purposes)
+			 * whether one occurred, the initial value of NewPCF is saved, and compared with
+			 * the new value of NewPCF after the branch/jump handling code.
+			 */
+			int savedNewPCF = NewPCF;
 			if (BranchD)
 			{
-				/*
-				 * These two dense lines forward the correct values to the ID comparator. 
-				 */
-				int compRsD = ( (RsNumD != 0) && (RsNumD == WriteRegM) && RegWriteM) ? AluOutM : RsD;
-				int compRtD = ( (RtNumD != 0) && (RtNumD == WriteRegM) && RegWriteM) ? AluOutM : RtD;
+				int compRsD = RsD;
+				if ( (RsNumD != 0) && (RsNumD == WriteRegM) && RegWriteM )
+				{
+					compRsD = AluOutM;
+					forwardingOccurred.set(4);
+				}
+				int compRtD = RtD;
+				if ( (RtNumD != 0) && (RtNumD == WriteRegM) && RegWriteM)
+				{
+					compRtD = AluOutM;
+					forwardingOccurred.set(5);
+				}
 				
 				boolean EqualD = (compRsD == compRtD);
 				
@@ -655,6 +760,10 @@ public class Simulator
 			{
 				NewPCF = RsD;
 				InBranchDelayF = true;
+			}
+			if (savedNewPCF != NewPCF)
+			{
+				branchOccurred = true;
 			}
 		}
 		

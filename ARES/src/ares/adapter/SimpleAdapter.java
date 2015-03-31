@@ -1,9 +1,10 @@
 package ares.adapter;
 
-import java.util.*;
 import java.io.File;
+import java.util.Scanner;
 
-import ares.core.*;
+import ares.core.Memory;
+import ares.core.Simulator;
 
 public class SimpleAdapter
 {

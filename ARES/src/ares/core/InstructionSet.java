@@ -51,6 +51,7 @@ public final class InstructionSet
 		instructionSet.put("sw",	new int[]{1, 0x2b      });
 		instructionSet.put("sub",	new int[]{0, 0x00, 0x22});
 		instructionSet.put("subu",	new int[]{0, 0x00, 0x23});
+		instructionSet.put("xor",	new int[]{0, 0x00, 0x26});
 		
 		instructionSet.put("mfhi",	new int[]{0, 0x00, 0x10      });
 		instructionSet.put("mthi",	new int[]{0, 0x00, 0x11      });
@@ -73,14 +74,14 @@ public final class InstructionSet
 		}
 	}
 	
-	private static final HashMap<Integer, String> iFormatInstructions = new HashMap<>();
+	private static final HashMap<Integer, String> nonRFormatInstructions = new HashMap<>();
 	static
 	{
 		for(String s : instructionSet.keySet())
 		{
 			int[] i = instructionSet.get(s);
 			if(i[1] != 0)
-				iFormatInstructions.put(i[1], s);
+				nonRFormatInstructions.put(i[1], s);
 		}
 	}
 	
@@ -125,8 +126,84 @@ public final class InstructionSet
 		if (opcode == 0)
 			result = rFormatInstructions.get(instruction & 0b111111);
 		else
-			result = iFormatInstructions.get(opcode);
+			result = nonRFormatInstructions.get(opcode);
 
 		return (result == null) ? "???" : result;
+	}
+	
+	public static String getInstruction(int instruction)
+	{
+		String result = getMnemonic(instruction);
+		if (result.equals("nop"))
+			return result;
+		if (result.equals("???"))
+			return result + " <0x" + Integer.toHexString(instruction) + ">";
+		
+		int opcode = (instruction >>> 26);
+		if (opcode == 0)
+		{
+			int funct = instruction & 0b111111;
+			if (funct < 0x08) //the shift instructions
+				return result + " " + getRegisterName((instruction >> 11) & 0b11111) + ", " + 
+						getRegisterName((instruction >> 16) & 0b11111) + ", " + 
+						(instruction >> 6 & 0b11111);
+			else
+				return result + " " + getRegisterName((instruction >> 11) & 0b11111) + ", " + 
+					getRegisterName((instruction >> 21) & 0b11111) + ", " + 
+					getRegisterName((instruction >> 16) & 0b11111);
+		}
+		else
+		{
+			if (opcode < 4) //J-type instructions
+				return result + " 0x" + Integer.toHexString(((instruction & 0x07FFFFFF) << 2));
+			if (opcode > 0x19) //loads and stores
+				return result + " " + getRegisterName((instruction >> 16) & 0b11111) + ", " + 
+				((short)(instruction & 0x0000FFFF)) + "(" + getRegisterName((instruction >> 21) & 0b11111) + ")";
+			else
+				return result + " " + getRegisterName((instruction >> 16) & 0b11111) + ", " + 
+				getRegisterName((instruction >> 21) & 0b11111) + ", " + 
+				((short)(instruction & 0x0000FFFF));
+		}
+		
+	}
+	
+	public static String getRegisterName(int register)
+	{
+		switch(register)
+		{
+		case 0: return "$zero";
+		case 1: return "$at";
+		case 2: return "$v0";
+		case 3: return "$v1";
+		case 4: return "$a0";
+		case 5: return "$a1";
+		case 6: return "$a2";
+		case 7: return "$a3";
+		case 8: return "$t0";
+		case 9: return "$t1";
+		case 10: return "$t2";
+		case 11: return "$t3";
+		case 12: return "$t4";
+		case 13: return "$t5";
+		case 14: return "$t6";
+		case 15: return "$t7";
+		case 16: return "$s0";
+		case 17: return "$s1";
+		case 18: return "$s2";
+		case 19: return "$s3";
+		case 20: return "$s4";
+		case 21: return "$s5";
+		case 22: return "$s6";
+		case 23: return "$s7";
+		case 24: return "$t8";
+		case 25: return "$t9";
+		case 26: return "$k0";
+		case 27: return "$k1";
+		case 28: return "$gp";
+		case 29: return "$sp";
+		case 30: return "$fp";
+		case 31: return "$ra";
+		default: return "";
+		}
 	}
 }

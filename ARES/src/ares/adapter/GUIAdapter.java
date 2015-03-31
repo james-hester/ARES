@@ -4,35 +4,39 @@ import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.awt.event.KeyEvent;
-import java.awt.event.KeyListener;
 import java.io.File;
 import java.util.Scanner;
 
-import javax.swing.*;
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.JButton;
+import javax.swing.JFileChooser;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JSpinner;
+import javax.swing.SpinnerNumberModel;
+import javax.swing.Timer;
 
 import ares.core.Memory;
 import ares.core.Simulator;
-import ares.ui.DisplayPanel;
-import ares.ui.PipelineElement;
+import ares.ui.AnimatedPipelineDisplay;
 
 public class GUIAdapter extends JFrame
 {
-
-	public static final int ANIMATION_DEFAULT_SPEED = 5;
-	
+	private static final long serialVersionUID = 1L;
 	public static final double SIMULATION_DEFAULT_SPEED_HZ = 1.0;
 	public static final double SIMULATION_MIN_SPEED_HZ = 0.1;
 	public static final double SIMULATION_MAX_SPEED_HZ = 10.0;
 	public static final double SIMULATION_SPEED_STEP_SIZE = 0.1;
-	
-	public static final int FRAMES_PER_SECOND = 39;
-	public static final int SLOWDOWN_FACTOR = 5;
-	public static final int ANIMATION_STEP_DELAY = 5;
-	
-	
-	private Timer mainAnimationTimer, stallAnimationTimer, runSpeedTimer, repaintTimer;
-	private DisplayPanel pipelineDisplay;
+
+	private Timer runSpeedTimer;
+	private AnimatedPipelineDisplay pipelineDisplay;
 	
 	private Simulator simulator;
 	private Memory memory;
@@ -45,7 +49,7 @@ public class GUIAdapter extends JFrame
 	{
 		super();
 		
-		pipelineDisplay = new DisplayPanel();
+		pipelineDisplay = new AnimatedPipelineDisplay();
 		pipelineDisplay.setPreferredSize(new Dimension(600, 370));
 		
 		stepButton = new JButton("Step");
@@ -54,7 +58,7 @@ public class GUIAdapter extends JFrame
 			@Override
 			public void actionPerformed(ActionEvent e)
 			{
-				if (mainAnimationTimer.isRunning() || runSpeedTimer.isRunning())
+				if (pipelineDisplay.isAnimationOngoing() || runSpeedTimer.isRunning())
 					return;
 				simulateCycle();
 			}
@@ -110,26 +114,18 @@ public class GUIAdapter extends JFrame
 		this.setResizable(false);
 		
 		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-		
-		mainAnimationTimer = new Timer(ANIMATION_STEP_DELAY * SLOWDOWN_FACTOR, new AnimationActionListener());
-		
+
 		runSpeedTimer = new Timer(Integer.MAX_VALUE, new ActionListener(){
 			@Override
 			public void actionPerformed(ActionEvent e) {
-					simulateCycle();
+				if (pipelineDisplay.isAnimationOngoing())
+					return;
+				simulateCycle();
 			}
 			
 		});
 	
-		stallAnimationTimer = new Timer(20, new StallAnimationActionListener());
-		
-		repaintTimer = new Timer(1000 / FRAMES_PER_SECOND, new ActionListener(){
-			@Override
-			public void actionPerformed(ActionEvent e) {
-					pipelineDisplay.repaint();
-			}	
-		});
-		
+
 		this.getContentPane().add(pipelineDisplay, BorderLayout.CENTER);
 		this.getContentPane().add(buttonPane, BorderLayout.SOUTH);
 		pack();
@@ -150,7 +146,6 @@ public class GUIAdapter extends JFrame
 			runButton.setText("Pause");
 			runSpeedTimer.setDelay( (int)(( 1000.0 / (Double) runSpeed.getValue()) ) );
 			runSpeedTimer.setInitialDelay(runSpeedTimer.getDelay());
-			mainAnimationTimer.setDelay(Math.min(5, runSpeedTimer.getDelay() / 80));
 			runSpeedTimer.start();
 		}
 	}
@@ -209,27 +204,54 @@ public class GUIAdapter extends JFrame
 		if (simulator.hasNextInstruction())
 		{
 			simulator.step();
-	
-			pipelineDisplay.addInstruction(simulator.getInstructionFetchedName());
 			
-			if (simulator.getInstructionFetchedName().equals("nop"))
+			pipelineDisplay.getNextElement().setForwardingOccurred(simulator.getForwardingOccurred());
+			
+			if (simulator.getStagesOccurred().get(0))
 			{
-				pipelineDisplay.getNextElement().setHole(0, true);
-				pipelineDisplay.getNextElement().setStage(0, false);
+				if (simulator.getInstructionFetchedName().equals("nop"))
+				{
+					pipelineDisplay.getNextElement().setHole(0, true);
+					pipelineDisplay.getNextElement().setStage(0, false);
+				}
+				else
+				{
+					pipelineDisplay.getNextElement().setStage(0, true);
+					pipelineDisplay.getNextElement().setIFData(simulator.getInstructionFetchedName());
+				}
+				pipelineDisplay.addInstruction(simulator.getInstructionFetched());
 			}
-			else for(int i = 0; i < 5; i++)
-				pipelineDisplay.getNextElement().setStage(i, simulator.getStagesOccurred().get(i));	
+			if (simulator.getStagesOccurred().get(1))
+			{
+				pipelineDisplay.getNextElement().setStage(1, true);
+				String[] idData = simulator.getIDData();
+				pipelineDisplay.getNextElement().setIDData(idData[0], idData[1]);
+			}
+			if (simulator.getStagesOccurred().get(2))
+			{
+				pipelineDisplay.getNextElement().setStage(2, true);
+				pipelineDisplay.getNextElement().setEXData(simulator.getEXData());
+			}
+			if (simulator.getStagesOccurred().get(3))
+			{
+				pipelineDisplay.getNextElement().setStage(3, true);
+				pipelineDisplay.getNextElement().setMEMData(simulator.getMEMOperation(), simulator.getMEMAddress());
+			}
+			if (simulator.getStagesOccurred().get(4))
+			{
+				pipelineDisplay.getNextElement().setStage(4, true);
+				pipelineDisplay.getNextElement().setWBData(simulator.getWBData());
+			}
 			
+			if ( simulator.branchOccurred() )
+			{
+				pipelineDisplay.insertBranch();
+			}
 			if ( simulator.normalStallOccurred() )
 			{
-				pipelineDisplay.getCurrentInstruction().setText("<stall>");
-				pipelineDisplay.getCurrentElement().setHole(0, true);
-				pipelineDisplay.getCurrentElement().setStage(0, false);
-				pipelineDisplay.getNextElement().setHole(1, true);
-				pipelineDisplay.getNextElement().setStage(1, false);	
+				pipelineDisplay.insertStall();
 			}
-			
-			pipelineDisplay.propagateStages();
+
 		}
 		else
 		{
@@ -238,43 +260,16 @@ public class GUIAdapter extends JFrame
 				fileLabel.setText("File loaded: <none>");
 				stepButton.setEnabled(false);
 				runButton.setEnabled(false);
+				runButton.setText("Run");
 				runSpeedTimer.stop();
+				
 			}
 			pipelineDisplay.addInstruction("");
 			pipelineDisplay.getNextElement().setHole(0, true);
 			pipelineDisplay.getNextElement().setStage(0, false);
-			pipelineDisplay.propagateStages();
-		}
-		mainAnimationTimer.start();
-		repaintTimer.start();
-	}
-	
-	class StallAnimationActionListener implements ActionListener
-	{
-		@Override
-		public void actionPerformed(ActionEvent e)
-		{
-			
 		}
 		
+		pipelineDisplay.startAnimation();
 	}
 	
-	class AnimationActionListener implements ActionListener
-	{
-		@Override
-		public void actionPerformed(ActionEvent e)
-		{
-			for(int i = 0; i < SLOWDOWN_FACTOR; i++)
-			{
-				pipelineDisplay.moveComponents();
-				if (pipelineDisplay.animationComplete())
-				{
-					pipelineDisplay.resetAnimation();
-					pipelineDisplay.repaint();
-					mainAnimationTimer.stop();
-					repaintTimer.stop();
-				}
-			}
-		}
-	}
 }
