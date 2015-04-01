@@ -159,14 +159,14 @@ public class GUIAdapter extends JFrame
 		if (result == JFileChooser.APPROVE_OPTION)
 		{
 			File theFile = openDlg.getSelectedFile();
-			loadBinaryFile(theFile);
+			loadBinaryTextFile(theFile);
 			fileLabel.setText("File loaded: " + theFile.getName());
 			stepButton.setEnabled(true);
 			runButton.setEnabled(true);
 		}
 	}
 	
-	private void loadBinaryFile(File theFile)
+	private void loadBinaryTextFile(File theFile)
 	{
 		memory = new Memory();
 		try
@@ -193,6 +193,8 @@ public class GUIAdapter extends JFrame
 		
 		simulator = new Simulator(memory);
 	}
+	
+	
 	
 	public void simulateCycle()
 	{
@@ -230,7 +232,7 @@ public class GUIAdapter extends JFrame
 			if (simulator.getStagesOccurred().get(2))
 			{
 				pipelineDisplay.getNextElement().setStage(2, true);
-				pipelineDisplay.getNextElement().setEXData(simulator.getEXData());
+				pipelineDisplay.getNextElement().setEXData(simulator.getEXOperationName());
 			}
 			if (simulator.getStagesOccurred().get(3))
 			{
@@ -240,7 +242,7 @@ public class GUIAdapter extends JFrame
 			if (simulator.getStagesOccurred().get(4))
 			{
 				pipelineDisplay.getNextElement().setStage(4, true);
-				pipelineDisplay.getNextElement().setWBData(simulator.getWBData());
+				pipelineDisplay.getNextElement().setWBData(simulator.getWBRegisterName());
 			}
 			
 			if ( simulator.branchOccurred() )

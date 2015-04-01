@@ -5,24 +5,70 @@ import java.util.BitSet;
 
 public class Simulator
 {
-	private Memory memory; //The simulator's memory.
+	private Memory memory; //The Memory class contains both main memory and registers.
 	
 	private static final boolean DEBUG = false; //When false, debugPrint() does nothing.
 	
+	/*
+	 * These fields are all used by the UI, and represent various high-level information about 
+	 * the results of a clock cycle. Generally, they are set but not used by the step() method.
+	 * Each has an associated accessor method.
+	 */
 	private boolean branchOccurred = false;
+	/** Whether the simulator has another instruction; if not, it has "dropped off the bottom." */
 	boolean hasNext = true;
-	String operationE = " ";
+	/** A one- to three-character description of the ALU's operation: examples include "+", "|", and "slt". */
+	String operationE = "";
 	private boolean stall = false;
 	private boolean stallMultiplier = false;
 	private int wroteReg = 0;
 	
 	/**
-	 * The pipeline registers and program counter.
+	 * The program counter, read at the beginning of the IF stage and written
+	 * at the end of the cycle.
 	 */
 	private int PC;
+	/**
+	 * The IF/ID staging register:
+	 * <p>
+	 * 	<li>	IF_ID[0] = the instruction just fetched						</li>
+	 *	<li>	IF_ID[1] = if an instruction (eg. not 0) was fetched, the PC of the instruction fetched plus four; otherwise, 0.	</li>
+	 *	<br> 	This synthetically prevents nops from being executed.
+	 * </p>
+	 */
 	private int[] IF_ID = new int[2];
+	/**
+	 * The ID/EX staging register:
+	 * <p>
+	 * 	<li>	IF_ID[0] = the instruction just decoded						</li>
+	 *	<li>	IF_ID[1] = the value of register Rs							</li>
+	 *	<li>	IF_ID[2] = the value of register Rt							</li>
+	 *	<li>	IF_ID[3] = the signed immediate value in the instruction	</li>
+	 *	<li>	IF_ID[4] = (PC + 4) of this instruction						</li>
+	 * </p> <br>
+	 * Note: even when parsing an R-format instruction, a signed immediate value is formed from
+	 * the last 16 bits of the instruction; even when parsing an I-format instruction, both Rs and Rt are read.
+	 * As far as I understand, this is the behavior of actual R-series implementations, and poses no problem since
+	 * this data will simply be discarded.
+	 */
 	private int[] ID_EX = new int[5];
+	/**
+	 * The EX/MEM staging register:
+	 * <p>
+	 * 	<li>	EX_MEM[0] = the output of the ALU																</li>
+	 *	<li>	EX_MEM[1] = if a register is to be written, the number of the register (1-31); otherwise, 0		</li>
+	 *	<li>	EX_MEM[2] = if main memory is to be written, the data to write to memory; otherwise, 0			</li>
+	 * </p>
+	 */
 	private int[] EX_MEM = new int[4];
+	/**
+	 * The MEM/WB staging register:
+	 * <p>
+	 * 	<li>	MEM_WB[0] = the output of the ALU																</li>
+	 *	<li>	MEM_WB[1] = if a register is to be written, the number of the register (1-31); otherwise, 0		</li>
+	 *	<li>	MEM_WB[2] = the data just read from main memory													</li>
+	 * </p>
+	 */
 	private int[] MEM_WB = new int[4];
 	
 	/**
@@ -41,7 +87,18 @@ public class Simulator
 	private BitSet stageOccurred = new BitSet(5);
 	
 	/**
-	 * 
+	 * Each bit represents whether one of the six forwarding paths
+	 * was taken in the prior clock cycle.
+	 * <br> The first four forwarding paths forward to the ALU, and the next
+	 * two forward to the ID comparator.
+	 * <p>
+	 * 	<li>	forwardingOccurred[0] = ALU output from EX/MEM register -> Rs of ALU										</li>
+	 *	<li>	forwardingOccurred[1] = Result from MEM/WB register (ALU output or data read) -> Rs of ALU					</li>
+	 *	<li>	forwardingOccurred[2] = ALU output from EX/MEM register -> Rt of ALU										</li>
+	 *	<li>	forwardingOccurred[3] = Result from MEM/WB register (ALU output or data read) -> Rt of ALU					</li>
+	 *	<li>	forwardingOccurred[4] = ALU output from EX/MEM register -> Rs of ID branch comparator				 		</li>
+	 *	<li>	forwardingOccurred[5] = ALU output from EX/MEM register -> Rt of ID branch comparator						</li>
+	 * </p>
 	 */
 	private BitSet forwardingOccurred = new BitSet(6);
 	
@@ -58,9 +115,9 @@ public class Simulator
 	 */
 	MIPSException currentException = null;
 	
-	Coprocessor0 cp0 = new Coprocessor0();
 	
-
+	Coprocessor0 cp0 = new Coprocessor0();
+	MultiplyUnit multiplier = new MultiplyUnit();
 	
 	public Simulator(Memory m)
 	{
@@ -71,98 +128,7 @@ public class Simulator
 		Arrays.fill(EX_MEM, 0);
 		Arrays.fill(MEM_WB, 0);
 	}
-	
-	/**
-	 * Gets the name (the mnemonic) of the instruction which was just fetched in the last IF stage. 
-	 * @return a mnemonic, as a String
-	 */
-	public String getInstructionFetchedName()
-	{
-		return InstructionSet.getMnemonic(IF_ID[0]);
-	}
-	
-	public String getInstructionFetched()
-	{
-		return InstructionSet.getInstruction(IF_ID[0]);
-	}
-	
-	public BitSet getStagesOccurred()
-	{
-		return stageOccurred;
-	}
-	
-	public boolean exceptionOccurred()
-	{
-		return currentException == null;
-	}
-	
-	public boolean branchOccurred()
-	{
-		return branchOccurred;
-	}
-	
-	public boolean normalStallOccurred()
-	{
-		return stall;
-	}
-	
-	public boolean multiplierStallOccurred()
-	{
-		return stallMultiplier;
-	}
-	
-	public String[] getIDData()
-	{
-		int OpD = (ID_EX[0] >>> 26);
-		if (OpD == 0)
-			return new String[]{
-				"Rs: " + InstructionSet.getRegisterName((ID_EX[0] >> 21) & 0b11111),
-				"Rt: " + InstructionSet.getRegisterName((ID_EX[0] >> 16) & 0b11111)};
-		else
-			return new String[]{
-				"Rs: " + InstructionSet.getRegisterName((ID_EX[0] >> 21) & 0b11111),
-				"Imm: " + Integer.toString((ID_EX[3]))};
-	}
-	
-	public String getEXData()
-	{
-		return operationE;
-	}
-	
-	/**
-	 * 
-	 * @return 0: nothing happened
-	 * 1: read
-	 * 2: write
-	 */
-	public int getMEMOperation()
-	{
-		if (MEM_WB_CTRL.get(1))
-			return 2;
-		if (MEM_WB_CTRL.get(2))
-			return 1;
-		return 0;
-	}
-	
-	public String getMEMAddress()
-	{
-		String result = Integer.toHexString(MEM_WB[0]);
-		int len = result.length();
-		for(int i = 0; i < 8 - len; i++)
-			result = "0" + result;
-		return "0x" + result;
-	}
-	
-	public String getWBData()
-	{
-		return wroteReg == 0 ? "" : InstructionSet.getRegisterName(wroteReg);
-	}
-	
-	public BitSet getForwardingOccurred()
-	{
-		return forwardingOccurred;
-	}
-	
+		
 	/**
 	 * Execute one clock cycle, simulating each of the five pipeline stages of the early MIPS processor.
 	 * This method is broken into five parts:
@@ -183,7 +149,7 @@ public class Simulator
 	 */
 	public void step()
 	{
-		MultiplyUnit.step();
+		multiplier.step();
 		stageOccurred.clear();
 		forwardingOccurred.clear();
 		wroteReg = 0;
@@ -308,38 +274,42 @@ public class Simulator
 					setException(MIPSException.BREAK, PC - 8, InBranchDelayE);
 					break;
 				case 0x10: //mfhi
-					stallForMultiplierE = MultiplyUnit.hasStepsRemaining();
-					AluOutE = MultiplyUnit.moveFromHi();
+					stallForMultiplierE = multiplier.hasStepsRemaining();
+					AluOutE = multiplier.moveFromHi();
 					RegWriteE = true;
 					break;
 				case 0x11: //mthi
-					MultiplyUnit.moveToHi(RsE);
+					multiplier.moveToHi(RsE);
 					break;
 				case 0x12: //mflo
-					stallForMultiplierE = MultiplyUnit.hasStepsRemaining();
-					AluOutE = MultiplyUnit.moveFromLo();
+					stallForMultiplierE = multiplier.hasStepsRemaining();
+					AluOutE = multiplier.moveFromLo();
 					RegWriteE = true;
 					break;	
 				case 0x13: //mtlo
-					MultiplyUnit.moveToLo(RsE);
+					multiplier.moveToLo(RsE);
 					break;
 				case 0x18: //mult
-					MultiplyUnit.multiply(RsE, RtE);
+					multiplier.multiply(RsE, RtE);
+					operationE = "*";
 					RegWriteE = false;
 					WriteRegE = 0;
 					break;
 				case 0x19: //multu
-					MultiplyUnit.multiplyUnsigned(RsE, RtE);
+					multiplier.multiplyUnsigned(RsE, RtE);
+					operationE = "*";
 					RegWriteE = false;
 					WriteRegE = 0;
 					break;
 				case 0x1a: //div
-					MultiplyUnit.divide(RsE, RtE);
+					multiplier.divide(RsE, RtE);
+					operationE = "/";
 					RegWriteE = false;
 					WriteRegE = 0;
 					break;
 				case 0x1b: //divu
-					MultiplyUnit.divideUnsigned(RsE, RtE);
+					multiplier.divideUnsigned(RsE, RtE);
+					operationE = "/";
 					RegWriteE = false;
 					WriteRegE = 0;
 					break;
@@ -641,8 +611,8 @@ public class Simulator
 		{
 			stageOccurred.set(4);
 			AluOutW =   MEM_WB[0];
-			WriteRegW = MEM_WB[2];
-			ReadDataW = MEM_WB[3];
+			WriteRegW = MEM_WB[1];
+			ReadDataW = MEM_WB[2];
 			
 			RegWriteW = MEM_WB_CTRL.get(0);
 			MemWriteW = MEM_WB_CTRL.get(1);
@@ -807,7 +777,7 @@ public class Simulator
 		if ( ! stall)
 		{
 		IF_ID[0] = InstrF;
-		IF_ID[1] = (InstrF > 0) ? PCPlus4F : 0;
+		IF_ID[1] = (InstrF != 0) ? PCPlus4F : 0;
 		
 		IF_ID_CTRL.set(0, InBranchDelayF);
 		}
@@ -841,8 +811,8 @@ public class Simulator
 		EX_MEM_CTRL.set(6, SignExtendE);
 		
 		MEM_WB[0] = AluOutM;
-		MEM_WB[2] = WriteRegM;
-		MEM_WB[3] = ReadDataM;
+		MEM_WB[1] = WriteRegM;
+		MEM_WB[2] = ReadDataM;
 		
 		MEM_WB_CTRL.set(0, RegWriteM);
 		MEM_WB_CTRL.set(1, MemWriteM);
@@ -978,94 +948,7 @@ public class Simulator
 		if (cp0.interruptsEnabled() && currentException == null)
 			currentException = e;
 	}
-	
-	private static class MultiplyUnit
-	{
-		private static long product;
-		private static int rs, rt, stepsRemaining = -1;
-		private static enum Operation{MULTIPLY, DIVIDE, MULTIPLY_UNSIGNED, DIVIDE_UNSIGNED};
-		private static Operation currentOperation;
-		
-		public static void multiply(int _rs, int _rt)
-		{
-			doOperation(Operation.MULTIPLY, _rs, _rt, 14);
-		}
-		
-		public static void divide(int _rs, int _rt)
-		{
-			doOperation(Operation.DIVIDE, _rs, _rt, 35);
-		}
-		
-		public static void multiplyUnsigned(int _rs, int _rt)
-		{
-			doOperation(Operation.MULTIPLY, _rs, _rt, 14);
-		}
-		
-		public static void divideUnsigned(int _rs, int _rt)
-		{
-			doOperation(Operation.DIVIDE_UNSIGNED, _rs, _rt, 35);
-		}
-		
-		private static void doOperation(Operation which, int _rs, int _rt, int _stepsRemaining)
-		{
-			rs = _rs;
-			rt = _rt;
-			stepsRemaining = _stepsRemaining;
-			currentOperation = which;
-		}
-		
-		public static void step()
-		{
-			if (stepsRemaining > 0)
-				stepsRemaining--;
-			if (stepsRemaining == 0)
-			{
-				switch (currentOperation)
-				{
-				case DIVIDE:
-					product =  0x00000000FFFFFFFFL & (rs / rt);
-					product += 0xFFFFFFFF00000000L & ((long)(rs % rt) << 32);
-					break;
-				case MULTIPLY:
-					product = (long) rs * (long) rt;
-					break;
-				case DIVIDE_UNSIGNED:
-					product =  0x00000000FFFFFFFFL & (Integer.divideUnsigned(rs, rt));
-					product += 0xFFFFFFFF00000000L & ((long)(Integer.remainderUnsigned(rs, rt)) << 32);
-					break;					
-				default:
-					break;
-				}
-				stepsRemaining--;
-			}
-		}
-		
-		public static boolean hasStepsRemaining()
-		{
-			return (stepsRemaining > 0);
-		}
-		
-		public static int moveFromHi()
-		{
-			return (int)((product & 0xFFFFFFFF00000000L) >> 32);
-		}
-		
-		public static int moveFromLo()
-		{
-			return (int)((product & 0x00000000FFFFFFFFL));
-		}
-		
-		public static void moveToLo(int what)
-		{
-			product = (0xFFFFFFFF00000000L & product) + ((long)what & 0xFFFFFFFFL);
-		}
-		
-		public static void moveToHi(int what)
-		{
-			product = (0xFFFFFFFFL & product) + (((long)what & 0xFFFFFFFFL) << 32);
-		}
-	}
-		
+			
 	public boolean hasNextInstruction()
 	{
 		return hasNext;
@@ -1079,6 +962,113 @@ public class Simulator
 				return false;
 		}
 		return true;
+	}
+	
+	/**
+	 * Gets the name (the mnemonic) of the instruction which was just fetched in the last IF stage. 
+	 * @return a mnemonic, as a String
+	 */
+	public String getInstructionFetchedName()
+	{
+		return InstructionSet.getMnemonic(IF_ID[0]);
+	}
+	
+	public String getInstructionFetched()
+	{
+		return InstructionSet.getInstruction(IF_ID[0]);
+	}
+	
+	public BitSet getStagesOccurred()
+	{
+		return stageOccurred;
+	}
+	
+	public boolean exceptionOccurred()
+	{
+		return currentException == null;
+	}
+	
+	public boolean branchOccurred()
+	{
+		return branchOccurred;
+	}
+	
+	public boolean normalStallOccurred()
+	{
+		return stall;
+	}
+	
+	public boolean multiplierStallOccurred()
+	{
+		return stallMultiplier;
+	}
+	
+	public String[] getIDData()
+	{
+		int OpD = (ID_EX[0] >>> 26);
+		if (OpD == 0)
+			return new String[]{
+				"Rs: " + InstructionSet.getRegisterName((ID_EX[0] >> 21) & 0b11111),
+				"Rt: " + InstructionSet.getRegisterName((ID_EX[0] >> 16) & 0b11111)};
+		else
+			return new String[]{
+				"Rs: " + InstructionSet.getRegisterName((ID_EX[0] >> 21) & 0b11111),
+				"Imm: " + Integer.toString((ID_EX[3]))};
+	}
+	
+	/**
+	 * @return a one- to three-character String representing what the ALU did in this clock cycle.
+	 */
+	public String getEXOperationName()
+	{
+		return operationE;
+	}
+	
+	/**
+	 * Returns an integer representing what, if anything, happened in the MEM stage of this clock cycle.
+	 * @return 0: nothing happened
+	 * 		   1: read
+	 * 		   2: write
+	 */
+	public int getMEMOperation()
+	{
+		if (MEM_WB_CTRL.get(1))
+			return 2;
+		if (MEM_WB_CTRL.get(2))
+			return 1;
+		return 0;
+	}
+	
+	/**
+	 * If a read or write to memory occurred, returns the address of the read or write.
+	 * <br>		Note: if no read or write occurred, this method will return the String "&lt;none&gt;".
+	 * @return a String of exactly 10 characters: "0x" + a 32-bit hexadecimal address.
+	 */
+	public String getMEMAddress()
+	{
+		if (getMEMOperation() == 0)
+			return "<none>";
+		String result = Integer.toHexString(MEM_WB[0]);
+		int len = result.length();
+		for(int i = 0; i < 8 - len; i++)
+			result = "0" + result;
+		return "0x" + result;
+	}
+	
+	/**
+	 * If a register was written in the WB stage, returns the full name of the register written.
+	 * @return the canonical name of the written register, including "$": for example, "$zero." 
+	 * Note: throughout ARES, register 30 is called "$fp" as in Patterson and Hennessy and the MARS simulator.
+	 * Microsoft (among others) call this register "$s8". 
+	 */
+	public String getWBRegisterName()
+	{
+		return wroteReg == 0 ? "" : InstructionSet.getRegisterName(wroteReg);
+	}
+	
+	public BitSet getForwardingOccurred()
+	{
+		return forwardingOccurred;
 	}
 	
 	private void debugPrint(Object msg)
