@@ -23,6 +23,8 @@ public class AnimatedPipelineDisplay extends JPanel
 	private static final long serialVersionUID = 1L;
 	static final double FRAMES_PER_SECOND = 60;
 	static final double ANIMATION_TOTAL_LENGTH_MS = 400;
+	static final double STALL_ANIMATION_TOTAL_LENGTH_MS = 400;
+	static final long STALL_ANIMATION_PAUSE_MS = 500;
 	
 	ArrayList<PipelineElement> pipelineElementList;
 	ArrayList<InstructionLabel> instructionList;
@@ -31,7 +33,7 @@ public class AnimatedPipelineDisplay extends JPanel
 	private Timer repaintTimer = new Timer((int)(1000.0 / FRAMES_PER_SECOND), new AnimationActionListener());
 	
 	private boolean showStallAnimation = false;
-	private float stallAnimAlpha = 1.0f;
+	private double stallAnimDisplacement = 1.0;
 	private BufferedImage stallAnimImg;
 	
 	
@@ -175,35 +177,36 @@ public class AnimatedPipelineDisplay extends JPanel
 		
 		if(showStallAnimation)
 		{
-			g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, stallAnimAlpha));
-			g2.drawImage(stallAnimImg, 0, this.getHeight() - PipelineElement.HEIGHT, null);
-			g2.setComposite(AlphaComposite.Clear);
+			g2.drawImage(stallAnimImg, 0, this.getHeight() - (int)(PipelineElement.HEIGHT * (stallAnimDisplacement)), null);
 		}
 
 	}
 
 	class StallAnimationActionListener implements ActionListener
 	{
-		private double componentDelta = 0;
-		private double stepSize = -1.0 * ((double)1 / (1200 / 1000.0)) / (double)FRAMES_PER_SECOND;
+		private double stepSize = -1000.0 / (STALL_ANIMATION_TOTAL_LENGTH_MS * (double)FRAMES_PER_SECOND);
 		
 		@Override
 		public void actionPerformed(ActionEvent e)
 		{
-			double amountToMove = Math.max((-1.0 * (double)1 + (double)componentDelta), stepSize);
-			
-			componentDelta -= amountToMove;
-			stallAnimAlpha += (amountToMove);
-			if (stallAnimAlpha < 0.0)
-				stallAnimAlpha = 0;
-			
+			stallAnimDisplacement += stepSize;			
 			repaint();
-			if (stallAnimAlpha < 0.0001)
+			
+			if (stallAnimDisplacement < -0.01)
 			{
-				stallAnimAlpha = 1.0f;
-				componentDelta = 0;
-				showStallAnimation = false;
 				stallAnimationTimer.stop();
+				
+				repaint();
+				stallAnimDisplacement = 1.0;
+				showStallAnimation = false;
+				try
+				{
+					Thread.sleep(STALL_ANIMATION_PAUSE_MS);
+				} catch (InterruptedException ie)
+				{
+					return;
+				}
+				
 			}
 		}
 		

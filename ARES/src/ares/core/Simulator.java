@@ -275,16 +275,22 @@ public class Simulator
 					break;
 				case 0x10: //mfhi
 					stallForMultiplierE = multiplier.hasStepsRemaining();
-					AluOutE = multiplier.moveFromHi();
-					RegWriteE = true;
+					if ( ! stallForMultiplierE)
+					{
+						AluOutE = multiplier.moveFromHi();
+						RegWriteE = true;
+					}
 					break;
 				case 0x11: //mthi
 					multiplier.moveToHi(RsE);
 					break;
 				case 0x12: //mflo
 					stallForMultiplierE = multiplier.hasStepsRemaining();
-					AluOutE = multiplier.moveFromLo();
-					RegWriteE = true;
+					if ( ! stallForMultiplierE)
+					{
+						AluOutE = multiplier.moveFromLo();
+						RegWriteE = true;
+					}
 					break;	
 				case 0x13: //mtlo
 					multiplier.moveToLo(RsE);
@@ -874,7 +880,7 @@ public class Simulator
 		 * Check to see whether we've dropped off the bottom of the executing program.
 		 */
 		
-		if (PC > (memory.getMaxInstAddr() + (4 * 3)) && 
+		if (PC > (memory.getMaxInstAddr()) && 
 		(isEmpty(ID_EX) && isEmpty(EX_MEM) && isEmpty(MEM_WB)))
 		{
 			hasNext = false;
