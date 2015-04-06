@@ -77,13 +77,16 @@ public class AnimatedPipelineDisplay extends JPanel
 	
 	public void propagateStages()
 	{
+		System.out.println("propagateStages called - APD");
+		
 		for(int j = 4; j < 6; j++)
 		{
 			for(int i = 0; i < 4; i++)
 				pipelineElementList.get(j).setStage(i + 1, pipelineElementList.get(j - 1).getStage(i));			
 			
 			for(int i = 4; i > 0; i--)
-				pipelineElementList.get(j).setHole(i, pipelineElementList.get(j - 1).getHole(i - 1));
+				if (pipelineElementList.get(j - 1).getHole(i - 1))
+					pipelineElementList.get(j).setHole(i, true);
 			
 			pipelineElementList.get(j).setHole(0, false);
 		}
@@ -96,8 +99,8 @@ public class AnimatedPipelineDisplay extends JPanel
 	
 	public void insertBranch()
 	{
-		pipelineElementList.get(3).setHole(2, true);
-		pipelineElementList.get(3).setStage(2, false);
+		pipelineElementList.get(4).setHole(2, true);
+		pipelineElementList.get(4).setStage(2, false);
 		repaint();
 		
 	}

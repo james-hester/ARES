@@ -22,6 +22,7 @@ public class Simulator
 	private boolean stall = false;
 	private boolean stallMultiplier = false;
 	private int wroteReg = 0;
+	private int cycleNumber = 0;
 	
 	/**
 	 * The program counter, read at the beginning of the IF stage and written
@@ -149,10 +150,12 @@ public class Simulator
 	 */
 	public void step()
 	{
+		cycleNumber++;
 		multiplier.step();
 		stageOccurred.clear();
 		forwardingOccurred.clear();
 		wroteReg = 0;
+		branchOccurred = false;
 		
 		/*
 		 * IF: Instruction fetch, phase 1.
@@ -260,6 +263,7 @@ public class Simulator
 					//do nothing; jump has already been performed
 					RegWriteE = false;
 					WriteRegE = 0;
+					stageOccurred.clear(2);
 					break;
 				case 0x09: //jalr
 					AluOutE = PCPlus4E + 4;
@@ -768,7 +772,6 @@ public class Simulator
 		if (stallForMultiplierE)
 		{
 			stall = stallMultiplier = true;
-			
 		}
 		
 		/*-------------------------------------------------------------------*
@@ -893,6 +896,7 @@ public class Simulator
 		
 		if (DEBUG)
 		{
+			debugPrint("(" + cycleNumber + ")");
 			debugPrint("---------------------------");
 			for(int i = 0; i < 10; i++)
 			{

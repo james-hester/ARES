@@ -5,6 +5,7 @@ import java.awt.Dimension;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.util.Scanner;
 
 import javax.swing.BorderFactory;
@@ -159,16 +160,24 @@ public class GUIAdapter extends JFrame
 		if (result == JFileChooser.APPROVE_OPTION)
 		{
 			File theFile = openDlg.getSelectedFile();
-			loadBinaryTextFile(theFile);
+			memory = new Memory();
+			loadBinaryTextFile(theFile, Memory.TEXT_SEGMENT_START_ADDRESS);
+			
+			if (openDlg.showOpenDialog(this) == JFileChooser.APPROVE_OPTION)
+			{
+				loadBinaryTextFile(openDlg.getSelectedFile(), Memory.DATA_SEGMENT_START_ADDRESS);
+			}
+			
+			
+			simulator = new Simulator(memory);
 			fileLabel.setText("File loaded: " + theFile.getName());
 			stepButton.setEnabled(true);
 			runButton.setEnabled(true);
 		}
 	}
 	
-	private void loadBinaryTextFile(File theFile)
+	private void loadBinaryTextFile(File theFile, int baseAddress)
 	{
-		memory = new Memory();
 		try
 		{
 			Scanner readFile = new Scanner(theFile);
@@ -176,22 +185,26 @@ public class GUIAdapter extends JFrame
 			while (readFile.hasNextLine())
 			{ 
 				int a = Integer.parseUnsignedInt(readFile.nextLine(), 16);
-				memory.storeWord(Memory.TEXT_SEGMENT_START_ADDRESS + i, a);
+				memory.storeWord(baseAddress + i, a);
 				i += 4;
 			}
-			memory.setMaxInstAddr(Memory.TEXT_SEGMENT_START_ADDRESS + i);
+			memory.setMaxInstAddr(baseAddress + i);
 			
 			readFile.close();
 		} 
-		catch (Exception e)  
+		catch (FileNotFoundException e)  
+		{ 
+			JOptionPane.showMessageDialog(this, "An error occurred while reading the specified\nfile. Please ensure the file is not being used by other "
+					+ "programs and try again",
+					"Error", JOptionPane.ERROR_MESSAGE);
+		}
+		catch (NumberFormatException e)
 		{
 			JOptionPane.showMessageDialog(this, "An error occurred while loading the specified\nfile. Please ensure the file is in MARS'"
 					+ " \"Hexadecimal Text\" format\n(with one hexadecimal number per line) and try again.",
 					"Error", JOptionPane.ERROR_MESSAGE);
 			return;
 		}
-		
-		simulator = new Simulator(memory);
 	}
 	
 	
@@ -247,6 +260,7 @@ public class GUIAdapter extends JFrame
 			
 			if ( simulator.branchOccurred() )
 			{
+				System.out.println("branch occurred GUIAdapter");
 				pipelineDisplay.insertBranch();
 			}
 			if ( simulator.normalStallOccurred() )
@@ -270,7 +284,6 @@ public class GUIAdapter extends JFrame
 			pipelineDisplay.getNextElement().setHole(0, true);
 			pipelineDisplay.getNextElement().setStage(0, false);
 		}
-		
 		pipelineDisplay.startAnimation();
 	}
 	
