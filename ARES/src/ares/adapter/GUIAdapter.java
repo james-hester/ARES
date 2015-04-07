@@ -8,6 +8,7 @@ import java.awt.event.ItemEvent;
 import java.awt.event.ItemListener;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.util.Arrays;
 import java.util.Scanner;
 
 import javax.swing.BorderFactory;
@@ -184,6 +185,8 @@ public class GUIAdapter extends JFrame
 	
 	public void loadTextSeg()
 	{
+		try
+		{
 		int result = openDlg.showOpenDialog(this);
 		
 		if (result == JFileChooser.APPROVE_OPTION)
@@ -197,6 +200,12 @@ public class GUIAdapter extends JFrame
 			stepButton.setEnabled(true);
 			runButton.setEnabled(true);
 			openDataSeg.setEnabled(true);
+		}
+		}
+		catch (Exception e)
+		{
+			JOptionPane.showMessageDialog(this, "An error occurred while trying to open the specified file:\n" + Arrays.toString(e.getStackTrace()),
+					"Error", JOptionPane.ERROR_MESSAGE);
 		}
 	}
 	
@@ -228,7 +237,7 @@ public class GUIAdapter extends JFrame
 		catch (FileNotFoundException e)  
 		{ 
 			JOptionPane.showMessageDialog(this, "An error occurred while reading the specified\nfile. Please ensure the file is not being used by other "
-					+ "programs and try again",
+					+ "programs and try again.",
 					"Error", JOptionPane.ERROR_MESSAGE);
 		}
 		catch (NumberFormatException e)

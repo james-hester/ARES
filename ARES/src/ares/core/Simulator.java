@@ -152,7 +152,6 @@ public class Simulator
 	 */
 	public void step()
 	{
-		long timeTaken = System.nanoTime();
 		cycleNumber++;
 		multiplier.step();
 		stageOccurred.clear();
@@ -942,9 +941,7 @@ public class Simulator
 		 * Normal simulator code is complete at this point.
 		 * Everything that follows is debug code.
 		 */
-		
-		System.out.println(System.nanoTime() - timeTaken);
-		
+				
 		if (DEBUG)
 		{
 			debugPrint("(" + cycleNumber + ")");
