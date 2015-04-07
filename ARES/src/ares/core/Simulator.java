@@ -7,7 +7,7 @@ public class Simulator
 {
 	private Memory memory; //The Memory class contains both main memory and registers.
 	
-	private static final boolean DEBUG = true; //When false, debugPrint() does nothing.
+	private static final boolean DEBUG = false; //When false, debugPrint() does nothing.
 	
 	/*
 	 * These fields are all used by the UI, and represent various high-level information about 
@@ -23,6 +23,8 @@ public class Simulator
 	private boolean stallMultiplier = false;
 	private int wroteReg = 0;
 	private int cycleNumber = 0;
+	
+	private boolean forwardingEnabled = true;
 	
 	/**
 	 * The program counter, read at the beginning of the IF stage and written
@@ -150,12 +152,14 @@ public class Simulator
 	 */
 	public void step()
 	{
+		long timeTaken = System.nanoTime();
 		cycleNumber++;
 		multiplier.step();
 		stageOccurred.clear();
 		forwardingOccurred.clear();
 		wroteReg = 0;
 		branchOccurred = false;
+		stall = false;
 		
 		/*
 		 * IF: Instruction fetch, phase 1.
@@ -669,14 +673,28 @@ public class Simulator
 			if ((RsNumD != 0) && (RsNumD == WriteRegE) && RegWriteE)
 			{
 				//Forwarding from EX/MEM register to top branch of ALU
-				RsD = AluOutE;
-				forwardingOccurred.set(0);
+				if (forwardingEnabled)
+				{
+					RsD = AluOutE;
+					forwardingOccurred.set(0);
+				}
+				else
+				{
+					stall = true;
+				}
 			}
 			else if ((RsNumD != 0) && (RsNumD == WriteRegM) && RegWriteM)
 			{
 				//Forwarding from MEM/WB register to top branch of ALU
-				RsD = MemToRegM ? ReadDataM : AluOutM;
-				forwardingOccurred.set(1);
+				if (forwardingEnabled)
+				{
+					RsD = MemToRegM ? ReadDataM : AluOutM;
+					forwardingOccurred.set(1);
+				}
+				else
+				{
+					stall = true;
+				}
 			}
 			else
 				RsD = memory.readRegister(RsNumD);
@@ -685,13 +703,27 @@ public class Simulator
 			
 			if ((RtNumD != 0) && (RtNumD == WriteRegE) && RegWriteE)
 			{
-				RtD = AluOutE;
-				forwardingOccurred.set(2);
+				if (forwardingEnabled)
+				{
+					RtD = AluOutE;
+					forwardingOccurred.set(2);
+				}
+				else
+				{
+					stall = true;
+				}
 			}
 			else if ((RtNumD != 0) && (RtNumD == WriteRegM) && RegWriteM)
 			{
-				RtD = MemToRegM ? ReadDataM : AluOutM;
-				forwardingOccurred.set(3);
+				if (forwardingEnabled)
+				{
+					RtD = MemToRegM ? ReadDataM : AluOutM;
+					forwardingOccurred.set(3);
+				}
+				else
+				{
+					stall = true;
+				}
 			}
 			else
 				RtD = memory.readRegister(RtNumD);
@@ -705,19 +737,36 @@ public class Simulator
 			 * the new value of NewPCF after the branch/jump handling code.
 			 */
 			int savedNewPCF = NewPCF;
+			handleBranches:
 			if (BranchD)
 			{
 				int compRsD = RsD;
 				if ( (RsNumD != 0) && (RsNumD == WriteRegM) && RegWriteM )
 				{
-					compRsD = AluOutM;
-					forwardingOccurred.set(4);
+					if (forwardingEnabled)
+					{
+						compRsD = AluOutM;
+						forwardingOccurred.set(4);
+					}
+					else
+					{
+						stall = true;
+						break handleBranches;
+					}
 				}
 				int compRtD = RtD;
 				if ( (RtNumD != 0) && (RtNumD == WriteRegM) && RegWriteM)
 				{
-					compRtD = AluOutM;
-					forwardingOccurred.set(5);
+					if (forwardingEnabled)
+					{
+						compRtD = AluOutM;
+						forwardingOccurred.set(5);
+					}
+					else
+					{
+						stall = true;
+						break handleBranches;
+					}
 				}
 				
 				boolean EqualD = (compRsD == compRtD);
@@ -734,6 +783,8 @@ public class Simulator
 					break;
 				}
 			}
+			
+			
 			else if ( ! InBranchDelayD && (OpD == 0x02 || OpD == 0x03)) //j and jal
 			{
 				NewPCF = (PCPlus4D & 0xF0000000) + ((InstrD & 0x07FFFFFF) << 2);
@@ -766,10 +817,6 @@ public class Simulator
 				))
 		{
 			stall = true;
-		}
-		else
-		{
-			stall = false;
 		}
 		if (stallForMultiplierE)
 		{
@@ -895,6 +942,8 @@ public class Simulator
 		 * Normal simulator code is complete at this point.
 		 * Everything that follows is debug code.
 		 */
+		
+		System.out.println(System.nanoTime() - timeTaken);
 		
 		if (DEBUG)
 		{
@@ -1081,6 +1130,11 @@ public class Simulator
 	public BitSet getForwardingOccurred()
 	{
 		return forwardingOccurred;
+	}
+	
+	public void setForwardingEnabled(boolean fE)
+	{
+		forwardingEnabled = fE;
 	}
 	
 	private void debugPrint(Object msg)

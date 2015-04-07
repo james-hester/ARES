@@ -4,6 +4,8 @@ import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.ItemEvent;
+import java.awt.event.ItemListener;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.util.Scanner;
@@ -12,6 +14,7 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
+import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -46,7 +49,7 @@ public class GUIAdapter extends JFrame
 	JLabel fileLabel = new JLabel("File loaded: <none>");
 	JSpinner runSpeed;
 	JFileChooser openDlg = new JFileChooser();
-	
+	JCheckBoxMenuItem forwardingEnabled;
 	JMenuItem openDataSeg = new JMenuItem("Load Data Segment...");
 	
 	public GUIAdapter()
@@ -110,6 +113,23 @@ public class GUIAdapter extends JFrame
 				openAsmFile.setEnabled(false);
 				file.add(openAsmFile);
 			menuBar.add(file);
+			JMenu options = new JMenu("Options");
+				forwardingEnabled = new JCheckBoxMenuItem("Enable forwarding");
+				forwardingEnabled.setSelected(true);
+				forwardingEnabled.addItemListener(new ItemListener(){
+					@Override
+					public void itemStateChanged(ItemEvent e) {
+						/*
+						 * The simulator is initialized when loadTextSeg is called. At that point,
+						 * the value of this checkbox is assessed and forwarding is properly set.
+						 * So, unchecking this box before loading a file will still work correctly.
+						 */
+						if (simulator != null)
+							simulator.setForwardingEnabled(e.getStateChange() == ItemEvent.SELECTED);
+					}
+				});
+				options.add(forwardingEnabled);
+			menuBar.add(options);	
 		setJMenuBar(menuBar);
 		
 		JPanel buttonPane = new JPanel();
@@ -170,8 +190,9 @@ public class GUIAdapter extends JFrame
 		{
 			File theFile = openDlg.getSelectedFile();
 			memory = new Memory();
-			loadBinaryTextFile(theFile, Memory.TEXT_SEGMENT_START_ADDRESS);			
+			loadHexadecimalTextFile(theFile, Memory.TEXT_SEGMENT_START_ADDRESS);			
 			simulator = new Simulator(memory);
+			simulator.setForwardingEnabled(forwardingEnabled.isSelected());
 			fileLabel.setText("File loaded: " + theFile.getName() + " (txt)");
 			stepButton.setEnabled(true);
 			runButton.setEnabled(true);
@@ -183,12 +204,12 @@ public class GUIAdapter extends JFrame
 	{
 		if (openDlg.showOpenDialog(this) == JFileChooser.APPROVE_OPTION)
 		{
-			loadBinaryTextFile(openDlg.getSelectedFile(), Memory.DATA_SEGMENT_START_ADDRESS);
+			loadHexadecimalTextFile(openDlg.getSelectedFile(), Memory.DATA_SEGMENT_START_ADDRESS);
 			fileLabel.setText(fileLabel.getText() + " (dat)");
 		}
 	}
 	
-	private void loadBinaryTextFile(File theFile, int baseAddress)
+	private void loadHexadecimalTextFile(File theFile, int whereToLoad)
 	{
 		try
 		{
@@ -197,10 +218,10 @@ public class GUIAdapter extends JFrame
 			while (readFile.hasNextLine())
 			{ 
 				int a = Integer.parseUnsignedInt(readFile.nextLine(), 16);
-				memory.storeWord(baseAddress + i, a);
+				memory.storeWord(whereToLoad + i, a);
 				i += 4;
 			}
-			memory.setMaxInstAddr(baseAddress + i);
+			memory.setMaxInstAddr(whereToLoad + i);
 			
 			readFile.close();
 		} 
@@ -272,7 +293,6 @@ public class GUIAdapter extends JFrame
 			
 			if ( simulator.branchOccurred() )
 			{
-				System.out.println("branch occurred GUIAdapter");
 				pipelineDisplay.insertBranch();
 			}
 			if ( simulator.normalStallOccurred() )
