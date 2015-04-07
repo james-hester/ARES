@@ -45,6 +45,9 @@ public class GUIAdapter extends JFrame
 	JButton stepButton, runButton;
 	JLabel fileLabel = new JLabel("File loaded: <none>");
 	JSpinner runSpeed;
+	JFileChooser openDlg = new JFileChooser();
+	
+	JMenuItem openDataSeg = new JMenuItem("Load Data Segment...");
 	
 	public GUIAdapter()
 	{
@@ -87,14 +90,22 @@ public class GUIAdapter extends JFrame
 		
 		JMenuBar menuBar = new JMenuBar();
 			JMenu file = new JMenu("File");
-				JMenuItem openBinFile = new JMenuItem("Load Binary File...");
+				JMenuItem openBinFile = new JMenuItem("Load Text Segment...");
 				openBinFile.addActionListener(new ActionListener(){
 					@Override
 					public void actionPerformed(ActionEvent e) {
-						loadBinaryFile();
+						loadTextSeg();
 					}
 				});
 				file.add(openBinFile);
+				openDataSeg.addActionListener(new ActionListener(){
+					@Override
+					public void actionPerformed(ActionEvent e) {
+						loadDataSeg();
+					}
+				});
+				openDataSeg.setEnabled(false);
+				file.add(openDataSeg);
 				JMenuItem openAsmFile = new JMenuItem("Assemble...");
 				openAsmFile.setEnabled(false);
 				file.add(openAsmFile);
@@ -151,28 +162,29 @@ public class GUIAdapter extends JFrame
 		}
 	}
 	
-	public void loadBinaryFile()
+	public void loadTextSeg()
 	{
-		
-		JFileChooser openDlg = new JFileChooser();
 		int result = openDlg.showOpenDialog(this);
 		
 		if (result == JFileChooser.APPROVE_OPTION)
 		{
 			File theFile = openDlg.getSelectedFile();
 			memory = new Memory();
-			loadBinaryTextFile(theFile, Memory.TEXT_SEGMENT_START_ADDRESS);
-			
-			if (openDlg.showOpenDialog(this) == JFileChooser.APPROVE_OPTION)
-			{
-				loadBinaryTextFile(openDlg.getSelectedFile(), Memory.DATA_SEGMENT_START_ADDRESS);
-			}
-			
-			
+			loadBinaryTextFile(theFile, Memory.TEXT_SEGMENT_START_ADDRESS);			
 			simulator = new Simulator(memory);
-			fileLabel.setText("File loaded: " + theFile.getName());
+			fileLabel.setText("File loaded: " + theFile.getName() + " (txt)");
 			stepButton.setEnabled(true);
 			runButton.setEnabled(true);
+			openDataSeg.setEnabled(true);
+		}
+	}
+	
+	public void loadDataSeg()
+	{
+		if (openDlg.showOpenDialog(this) == JFileChooser.APPROVE_OPTION)
+		{
+			loadBinaryTextFile(openDlg.getSelectedFile(), Memory.DATA_SEGMENT_START_ADDRESS);
+			fileLabel.setText(fileLabel.getText() + " (dat)");
 		}
 	}
 	
@@ -276,6 +288,7 @@ public class GUIAdapter extends JFrame
 				fileLabel.setText("File loaded: <none>");
 				stepButton.setEnabled(false);
 				runButton.setEnabled(false);
+				openDataSeg.setEnabled(false);
 				runButton.setText("Run");
 				runSpeedTimer.stop();
 				

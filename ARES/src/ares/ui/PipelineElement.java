@@ -35,12 +35,16 @@ public class PipelineElement
 	public static final int WIDTH = 80;
 	public static final int HEIGHT = 74;
 	
+	/**
+	 * Creates a new PipelineElement and moves it to (x,y).
+	 * Note: initially, the element contains all five stages and no holes.
+	 * @param x the x coordinate of the top left corner of the top of the element (typically, the WB phase)
+	 * @param y the y coordinate of this corner
+	 */
 	public PipelineElement(double x, double y)
 	{
 		move(x, y);
-		hasStage.clear();
-		hasStage.set(0);
-		hasHole.clear();
+		hasStage.set(0, hasStage.size() - 1);
 	}
 	
 	public void setForwardingOccurred(BitSet forwardingOccurred)
@@ -115,6 +119,11 @@ public class PipelineElement
 		y += (4 * HEIGHT);
 		g2.setColor(PIPELINE_ELEMENT.getColor());
 		
+		if (isHighlighted)
+		{
+			g2.addRenderingHints(new RenderingHints(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF));
+		}
+		
 		if (hasHole.get(0))
 		{
 			y -= HEIGHT;
@@ -156,6 +165,11 @@ public class PipelineElement
 		if (hasStage.get(4))
 		{
 			drawWB(g2, isHighlighted);
+		}
+		
+		if (isHighlighted)
+		{
+			g2.addRenderingHints(new RenderingHints(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON));
 		}
 		
 		y = oldY;

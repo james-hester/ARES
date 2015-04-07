@@ -6,7 +6,7 @@ public class MultiplyUnit
 	private int rs, rt, stepsRemaining = -1;
 	private static enum Operation{MULTIPLY, DIVIDE, MULTIPLY_UNSIGNED, DIVIDE_UNSIGNED};
 	private Operation currentOperation;
-	///////
+	
 	public void multiply(int _rs, int _rt)
 	{
 		doOperation(Operation.MULTIPLY, _rs, _rt, 14);

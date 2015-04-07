@@ -7,7 +7,7 @@ public class Simulator
 {
 	private Memory memory; //The Memory class contains both main memory and registers.
 	
-	private static final boolean DEBUG = false; //When false, debugPrint() does nothing.
+	private static final boolean DEBUG = true; //When false, debugPrint() does nothing.
 	
 	/*
 	 * These fields are all used by the UI, and represent various high-level information about 
@@ -439,7 +439,11 @@ public class Simulator
 				case 0x04: //beq
 				case 0x05: //bne
 					//Branches and jumps are processed in the ID stage.
-					//So, don't do anything.
+					//So, don't do anything, and zero out everything going into
+					//EX/MEM: this is sort of a hack, and does not reflect the behavior
+					//of the R-series, but makes the GUI look good.
+					stageOccurred.clear(2);
+					RtNumE = 0; //WriteRegE becomes zero
 					break;
 				case 0x0d: //ori
 					AluOutE = (RsE | (SignImmE & 0x0000FFFF)); //zero-extended immediate used for ori
@@ -729,21 +733,19 @@ public class Simulator
 						NewPCF = PCPlus4D + (SignImmD * 4);
 					break;
 				}
-				InBranchDelayF = true;
 			}
 			else if ( ! InBranchDelayD && (OpD == 0x02 || OpD == 0x03)) //j and jal
 			{
 				NewPCF = (PCPlus4D & 0xF0000000) + ((InstrD & 0x07FFFFFF) << 2);
-				InBranchDelayF = true;
 			}
 			else if ( ! InBranchDelayD && (OpD == 0x00 && ((InstrD & 0b111111) == 0x08 || (InstrD & 0b111111) == 0x09))) //jr and jalr
 			{
 				NewPCF = RsD;
-				InBranchDelayF = true;
 			}
 			if (savedNewPCF != NewPCF)
 			{
 				branchOccurred = true;
+				InBranchDelayF = true;
 			}
 		}
 		
