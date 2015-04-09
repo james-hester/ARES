@@ -90,10 +90,12 @@ public class Simulator
 	private BitSet stageOccurred = new BitSet(5);
 	
 	/**
-	 * Each bit represents whether one of the six forwarding paths
+	 * The first six bits represents whether one of the six forwarding paths
 	 * was taken in the prior clock cycle.
 	 * <br> The first four forwarding paths forward to the ALU, and the next
 	 * two forward to the ID comparator.
+	 * <br> The seventh bit encodes additional information about the source of the
+	 * data being forwarded from the MEM/WB stage.
 	 * <p>
 	 * 	<li>	forwardingOccurred[0] = ALU output from EX/MEM register -> Rs of ALU										</li>
 	 *	<li>	forwardingOccurred[1] = Result from MEM/WB register (ALU output or data read) -> Rs of ALU					</li>
@@ -101,6 +103,8 @@ public class Simulator
 	 *	<li>	forwardingOccurred[3] = Result from MEM/WB register (ALU output or data read) -> Rt of ALU					</li>
 	 *	<li>	forwardingOccurred[4] = ALU output from EX/MEM register -> Rs of ID branch comparator				 		</li>
 	 *	<li>	forwardingOccurred[5] = ALU output from EX/MEM register -> Rt of ID branch comparator						</li>
+	 *  <li>	forwardingOccurred[6] = MemToRegM (eg. whether what was forwarded from MEM/WB came from 
+	 *  		the ALU or the memory) 																						</li>
 	 * </p>
 	 */
 	private BitSet forwardingOccurred = new BitSet(6);
@@ -152,13 +156,20 @@ public class Simulator
 	 */
 	public void step()
 	{
+		/*
+		 * Reset the global state variables.
+		 */
 		cycleNumber++;
-		multiplier.step();
 		stageOccurred.clear();
 		forwardingOccurred.clear();
 		wroteReg = 0;
 		branchOccurred = false;
 		stall = false;
+		
+		/*
+		 * Call the step methods of peripheral devices/coprocessors.
+		 */
+		multiplier.step();
 		
 		/*
 		 * IF: Instruction fetch, phase 1.
@@ -689,6 +700,7 @@ public class Simulator
 				{
 					RsD = MemToRegM ? ReadDataM : AluOutM;
 					forwardingOccurred.set(1);
+					forwardingOccurred.set(6, MemToRegM);
 				}
 				else
 				{
@@ -716,8 +728,11 @@ public class Simulator
 			{
 				if (forwardingEnabled)
 				{
+					//TODO: should be two different boolean values for ReadDataM
+					//and AluOutM, to draw two different arrows
 					RtD = MemToRegM ? ReadDataM : AluOutM;
 					forwardingOccurred.set(3);
+					forwardingOccurred.set(6, MemToRegM);
 				}
 				else
 				{

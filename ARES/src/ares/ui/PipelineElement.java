@@ -303,17 +303,31 @@ public class PipelineElement
 	
 	private void drawMEM(Graphics2D g2, boolean highlight)
 	{
+		int x1, y1, y2 = 0;
 		if (forwardingOccurred.get(1))
-			drawArrow(g2, x + (WIDTH / 16), y + (HEIGHT / 2), x + (17 * WIDTH / 16), y + (19 * HEIGHT / 8), Colors.FORWARDING_ARROW.getColor());		
+			y2 = y + (19 * HEIGHT / 8);		
 		else if (forwardingOccurred.get(3))
-			drawArrow(g2, x + (WIDTH / 16), y + (HEIGHT / 2), x + (17 * WIDTH / 16), y + (21 * HEIGHT / 8), Colors.FORWARDING_ARROW.getColor());
+			y2 = y + (21 * HEIGHT / 8);
+		if (forwardingOccurred.get(6))
+		{
+			x1 = x + (3 * WIDTH / 4);
+			y1 = y + (3 * HEIGHT / 8);
+		}
+		else
+		{
+			x1 = x + (3 * WIDTH / 4);
+			y1 = y + (7 * HEIGHT / 8);
+		}
+		if (forwardingOccurred.get(1) || forwardingOccurred.get(3))
+			drawArrow(g2, x1, y1, x + (17 * WIDTH / 16), y2, Colors.FORWARDING_ARROW.getColor());
 		
+
 		g2.drawLine(x, y + (HEIGHT / 2), x + (int)(2.5 * WIDTH / 16), y + (HEIGHT / 2));
 		g2.drawLine(x + (WIDTH / 16), y + (HEIGHT / 2), x + (WIDTH / 16), y + (7 * HEIGHT / 8));
 		g2.drawLine(x + (WIDTH / 16), y + (7 * HEIGHT / 8), x + (3 * WIDTH / 4), y + (7 * HEIGHT / 8));
 		g2.drawLine(x + (3 * WIDTH / 4), y + (7 * HEIGHT / 8), x + (3 * WIDTH / 4), y + (5 * HEIGHT / 8));
 		g2.drawLine(x + (3 * WIDTH / 4), y + (5 * HEIGHT / 8), x + (7 * WIDTH / 8), y + (5 * HEIGHT / 8));
-		g2.drawLine(x + (int)(10.5 * WIDTH / 16), y + (3 * HEIGHT / 8), x + (7 * WIDTH / 8), y + (3 * HEIGHT / 8));
+		g2.drawLine(x + (21 * WIDTH / 32), y + (3 * HEIGHT / 8), x + (7 * WIDTH / 8), y + (3 * HEIGHT / 8));
 		if (highlight)
 		{
 			g2.setColor(PIPELINE_HIGHLIGHT.getColor());

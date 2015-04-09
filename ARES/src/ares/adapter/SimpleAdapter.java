@@ -16,7 +16,7 @@ public class SimpleAdapter
 		try
 		{
 			System.out.println(System.getProperty("user.dir"));
-			readFile = new Scanner(new File("exception_test.txt"));
+			readFile = new Scanner(new File("exception_test.txt")); 
 			int i = 0;
 			while (readFile.hasNextLine())
 			{ 
