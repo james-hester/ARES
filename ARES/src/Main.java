@@ -26,6 +26,13 @@ public class Main {
 			return;
 		}
 		
+		/*
+		 * Set system-dependent properties.
+		 */
+		
+		System.setProperty("apple.laf.useScreenMenuBar", "true");
+		System.setProperty("sun.java2d.opengl", "true");
+		
 		new GUIAdapter();
 		//new AssemblerTestAdapter();
 		//new SimpleAdapter();

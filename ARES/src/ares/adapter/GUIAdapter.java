@@ -2,6 +2,7 @@ package ares.adapter;
 
 import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.awt.FileDialog;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.ItemEvent;
@@ -49,7 +50,7 @@ public class GUIAdapter extends JFrame
 	JButton stepButton, runButton;
 	JLabel fileLabel = new JLabel("File loaded: <none>");
 	JSpinner runSpeed;
-	JFileChooser openDlg = new JFileChooser();
+	FileDialog openDlg;
 	JCheckBoxMenuItem forwardingEnabled;
 	JMenuItem openDataSeg = new JMenuItem("Load Data Segment...");
 	
@@ -163,6 +164,9 @@ public class GUIAdapter extends JFrame
 		this.getContentPane().add(buttonPane, BorderLayout.SOUTH);
 		pack();
 		
+		openDlg = new FileDialog(this);
+		openDlg.setMode(FileDialog.LOAD);
+		
 		setFocusable(true);
 		setVisible(true);
 	}
@@ -187,20 +191,22 @@ public class GUIAdapter extends JFrame
 	{
 		try
 		{
-		int result = openDlg.showOpenDialog(this);
-		
-		if (result == JFileChooser.APPROVE_OPTION)
-		{
-			File theFile = openDlg.getSelectedFile();
-			memory = new Memory();
-			loadHexadecimalTextFile(theFile, Memory.TEXT_SEGMENT_START_ADDRESS);			
-			simulator = new Simulator(memory);
-			simulator.setForwardingEnabled(forwardingEnabled.isSelected());
-			fileLabel.setText("File loaded: " + theFile.getName() + " (txt)");
-			stepButton.setEnabled(true);
-			runButton.setEnabled(true);
-			openDataSeg.setEnabled(true);
-		}
+			openDlg.setVisible(true);
+			String result = openDlg.getDirectory() + openDlg.getFile();
+			System.out.println(result);
+			
+			if (result != null)
+			{
+				File theFile = new File(result);
+				memory = new Memory();
+				loadHexadecimalTextFile(theFile, Memory.TEXT_SEGMENT_START_ADDRESS);			
+				simulator = new Simulator(memory);
+				simulator.setForwardingEnabled(forwardingEnabled.isSelected());
+				fileLabel.setText("File loaded: " + theFile.getName() + " (txt)");
+				stepButton.setEnabled(true);
+				runButton.setEnabled(true);
+				openDataSeg.setEnabled(true);
+			}
 		}
 		catch (Exception e)
 		{
@@ -211,9 +217,11 @@ public class GUIAdapter extends JFrame
 	
 	public void loadDataSeg()
 	{
-		if (openDlg.showOpenDialog(this) == JFileChooser.APPROVE_OPTION)
+		openDlg.setVisible(true);
+		String result = openDlg.getFile();
+		if (result != null)
 		{
-			loadHexadecimalTextFile(openDlg.getSelectedFile(), Memory.DATA_SEGMENT_START_ADDRESS);
+			loadHexadecimalTextFile(new File(result), Memory.DATA_SEGMENT_START_ADDRESS);
 			fileLabel.setText(fileLabel.getText() + " (dat)");
 		}
 	}

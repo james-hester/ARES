@@ -728,8 +728,6 @@ public class Simulator
 			{
 				if (forwardingEnabled)
 				{
-					//TODO: should be two different boolean values for ReadDataM
-					//and AluOutM, to draw two different arrows
 					RtD = MemToRegM ? ReadDataM : AluOutM;
 					forwardingOccurred.set(3);
 					forwardingOccurred.set(6, MemToRegM);
