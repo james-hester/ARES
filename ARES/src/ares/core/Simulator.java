@@ -74,7 +74,7 @@ public class Simulator
 	 */
 	private int[] MEM_WB = new int[4];
 	
-	/**
+	/*
 	 * Pipeline registers for control bits.
 	 */
 	private BitSet IF_ID_CTRL =  new BitSet(1);

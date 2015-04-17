@@ -71,7 +71,7 @@ public class AnimatedPipelineDisplay extends JPanel
 			pipelineElementList.get(i).setStage(3, false);
 			pipelineElementList.get(i).setStage(4, false);
 		}
-		
+				
 	}
 		
 	public void startAnimation()

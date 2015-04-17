@@ -32,6 +32,7 @@ import javax.swing.Timer;
 import ares.core.Memory;
 import ares.core.Simulator;
 import ares.ui.AnimatedPipelineDisplay;
+import ares.ui.CacheSimulator;
 
 public class GUIAdapter extends JFrame
 {
@@ -53,6 +54,7 @@ public class GUIAdapter extends JFrame
 	FileDialog openDlg;
 	JCheckBoxMenuItem forwardingEnabled;
 	JMenuItem openDataSeg = new JMenuItem("Load Data Segment...");
+	CacheSimulator cacheSim;
 	
 	public GUIAdapter()
 	{
@@ -169,6 +171,9 @@ public class GUIAdapter extends JFrame
 		
 		setFocusable(true);
 		setVisible(true);
+		
+		cacheSim = new CacheSimulator();
+		cacheSim.action();
 	}
 	
 	public void runButtonPressed()
@@ -195,7 +200,7 @@ public class GUIAdapter extends JFrame
 			String result = openDlg.getDirectory() + openDlg.getFile();
 			System.out.println(result);
 			
-			if (result != null)
+			if (openDlg.getFile() != null)
 			{
 				File theFile = new File(result);
 				memory = new Memory();
@@ -306,6 +311,11 @@ public class GUIAdapter extends JFrame
 			{
 				pipelineDisplay.getNextElement().setStage(4, true);
 				pipelineDisplay.getNextElement().setWBData(simulator.getWBRegisterName());
+			}
+			
+			if (simulator.getMEMOperation() != 0 && cacheSim.isConnected())
+			{
+					cacheSim.processMIPSUpdate(Integer.parseInt(simulator.getMEMAddress().substring(2), 16));
 			}
 			
 			if ( simulator.branchOccurred() )
