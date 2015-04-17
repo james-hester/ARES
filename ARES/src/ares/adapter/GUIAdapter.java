@@ -25,6 +25,7 @@ import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JSeparator;
 import javax.swing.JSpinner;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.Timer;
@@ -53,7 +54,16 @@ public class GUIAdapter extends JFrame
 	JSpinner runSpeed;
 	FileDialog openDlg;
 	JCheckBoxMenuItem forwardingEnabled;
+	
+	JMenuItem openBinFile = new JMenuItem("Load Text Segment...");
 	JMenuItem openDataSeg = new JMenuItem("Load Data Segment...");
+	
+	JMenuItem reset = new JMenuItem("Reset");
+	
+	JMenuItem openCacheSim = new JMenuItem("Cache Simulator...");
+	
+	String[] currentProgramFilename = new String[2];
+	
 	CacheSimulator cacheSim;
 	
 	public GUIAdapter()
@@ -97,18 +107,29 @@ public class GUIAdapter extends JFrame
 		
 		JMenuBar menuBar = new JMenuBar();
 			JMenu file = new JMenu("File");
-				JMenuItem openBinFile = new JMenuItem("Load Text Segment...");
 				openBinFile.addActionListener(new ActionListener(){
 					@Override
 					public void actionPerformed(ActionEvent e) {
-						loadTextSeg();
+						openDlg.setVisible(true);
+						String result = openDlg.getDirectory() + openDlg.getFile();
+						System.out.println(result);
+
+						if (openDlg.getFile() != null)
+						{
+							loadTextSegFromFile(result);
+						}
 					}
 				});
 				file.add(openBinFile);
 				openDataSeg.addActionListener(new ActionListener(){
 					@Override
 					public void actionPerformed(ActionEvent e) {
-						loadDataSeg();
+						openDlg.setVisible(true);
+						String result = openDlg.getDirectory() + openDlg.getFile();
+						if (openDlg.getFile() != null)
+						{
+							loadDataSegFromFile(result);
+						}
 					}
 				});
 				openDataSeg.setEnabled(false);
@@ -116,6 +137,16 @@ public class GUIAdapter extends JFrame
 				JMenuItem openAsmFile = new JMenuItem("Assemble...");
 				openAsmFile.setEnabled(false);
 				file.add(openAsmFile);
+				file.add(new JSeparator());
+				reset.addActionListener(new ActionListener(){
+					@Override
+					public void actionPerformed(ActionEvent e)
+					{
+						reloadProgram();
+					}
+				});
+				reset.setEnabled(false);
+				file.add(reset);
 			menuBar.add(file);
 			JMenu options = new JMenu("Options");
 				forwardingEnabled = new JCheckBoxMenuItem("Enable forwarding");
@@ -133,7 +164,17 @@ public class GUIAdapter extends JFrame
 					}
 				});
 				options.add(forwardingEnabled);
-			menuBar.add(options);	
+			menuBar.add(options);
+			JMenu window = new JMenu("Window");
+				openCacheSim.addActionListener(new ActionListener(){
+					@Override
+					public void actionPerformed(ActionEvent e)
+					{
+						cacheSim.action();
+					}
+				});
+				window.add(openCacheSim);
+			menuBar.add(window);
 		setJMenuBar(menuBar);
 		
 		JPanel buttonPane = new JPanel();
@@ -172,8 +213,7 @@ public class GUIAdapter extends JFrame
 		setFocusable(true);
 		setVisible(true);
 		
-		cacheSim = new CacheSimulator();
-		cacheSim.action();
+		cacheSim = new CacheSimulator(this);
 	}
 	
 	public void runButtonPressed()
@@ -192,43 +232,44 @@ public class GUIAdapter extends JFrame
 		}
 	}
 	
-	public void loadTextSeg()
+	/**
+	 * Reloads the program in currentProgramFilename.
+	 * 
+	 */
+	public void reloadProgram()
 	{
-		try
-		{
-			openDlg.setVisible(true);
-			String result = openDlg.getDirectory() + openDlg.getFile();
-			System.out.println(result);
-			
-			if (openDlg.getFile() != null)
-			{
-				File theFile = new File(result);
-				memory = new Memory();
-				loadHexadecimalTextFile(theFile, Memory.TEXT_SEGMENT_START_ADDRESS);			
-				simulator = new Simulator(memory);
-				simulator.setForwardingEnabled(forwardingEnabled.isSelected());
-				fileLabel.setText("File loaded: " + theFile.getName() + " (txt)");
-				stepButton.setEnabled(true);
-				runButton.setEnabled(true);
-				openDataSeg.setEnabled(true);
-			}
-		}
-		catch (Exception e)
-		{
-			JOptionPane.showMessageDialog(this, "An error occurred while trying to open the specified file:\n" + Arrays.toString(e.getStackTrace()),
-					"Error", JOptionPane.ERROR_MESSAGE);
-		}
+		pipelineDisplay.reset();
+		pipelineDisplay.repaint();
+		
+		loadTextSegFromFile(currentProgramFilename[0]);
+		if (currentProgramFilename[1] != null)
+			loadDataSegFromFile(currentProgramFilename[1]);
 	}
 	
-	public void loadDataSeg()
+	public void loadTextSegFromFile(String filename)
 	{
-		openDlg.setVisible(true);
-		String result = openDlg.getFile();
-		if (result != null)
-		{
-			loadHexadecimalTextFile(new File(result), Memory.DATA_SEGMENT_START_ADDRESS);
+			currentProgramFilename[0] = filename;
+			currentProgramFilename[1] = null;
+			
+			memory = new Memory();
+			loadHexadecimalTextFile(new File(filename), Memory.TEXT_SEGMENT_START_ADDRESS);			
+			simulator = new Simulator(memory);
+			
+			simulator.setForwardingEnabled(forwardingEnabled.isSelected());
+			fileLabel.setText("File loaded: " + new File(filename).getName() + " (txt)");
+			
+			stepButton.setEnabled(true);
+			runButton.setEnabled(true);
+			openDataSeg.setEnabled(true);
+			reset.setEnabled(true);
+			
+	}
+	
+	public void loadDataSegFromFile(String filename)
+	{
+			currentProgramFilename[1] = filename;
+			loadHexadecimalTextFile(new File(filename), Memory.DATA_SEGMENT_START_ADDRESS);
 			fileLabel.setText(fileLabel.getText() + " (dat)");
-		}
 	}
 	
 	private void loadHexadecimalTextFile(File theFile, int whereToLoad)
@@ -336,6 +377,7 @@ public class GUIAdapter extends JFrame
 				stepButton.setEnabled(false);
 				runButton.setEnabled(false);
 				openDataSeg.setEnabled(false);
+				reset.setEnabled(false);
 				runButton.setText("Run");
 				runSpeedTimer.stop();
 				

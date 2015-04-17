@@ -41,6 +41,11 @@ public class AnimatedPipelineDisplay extends JPanel
 	public AnimatedPipelineDisplay()
 	{
 		super();
+		reset();
+	}
+		
+	public void reset()
+	{
 		setBackground(BACKGROUND.getColor());
 		
 		pipelineElementList = new ArrayList<>(6);
@@ -73,7 +78,7 @@ public class AnimatedPipelineDisplay extends JPanel
 		}
 				
 	}
-		
+	
 	public void startAnimation()
 	{
 		propagateStages();

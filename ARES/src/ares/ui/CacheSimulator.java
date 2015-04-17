@@ -112,18 +112,20 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       // Structure required for MarsTool use only (not stand-alone use). Want subclasses to have access.
       protected ConnectButton connectButton;      
    
+      private Frame myParent;
       
    	 /**
    	  *  Simple constructor, likely used by the MARS Tools menu mechanism
    	  */
-       public CacheSimulator() {
+       public CacheSimulator(Frame myParent) {
+    	   this.myParent = myParent;
          this.title = "Data Cache Simulation Tool, "+version;
       }
    		 
    		 
         public void action() {
             this.isBeingUsedAsAMarsTool = true;
-            dialog = new JDialog((Frame)null, this.title);
+            dialog = new JDialog(myParent, this.title);
             // assure the dialog goes away if user clicks the X
             dialog.addWindowListener(
                                      new WindowAdapter() {
